@@ -1,0 +1,230 @@
+{
+  "name": "c42checker",
+  "displayName": "42 Check",
+  "description": "42 Tokyo (C / 42 Norm) 向けの検証ツール一式を、段階的に fail-fast で実行し、F5 (CodeLLDB) と連携する司令塔",
+  "version": "0.1.0",
+  "publisher": "keusidan",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/keusidan/c42checker"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Linters",
+    "Debuggers",
+    "Other"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onStartupFinished",
+    "workspaceContains:**/*.c"
+  ],
+  "extensionDependencies": [
+    "vadimcn.vscode-lldb"
+  ],
+  "extensionPack": [
+    "llvm-vs-code-extensions.vscode-clangd"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "Makefile の評価 (make -n) や、検証対象プログラムの実行を行うため、信頼済みのワークスペースでのみ動作します。"
+    }
+  },
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "c42check",
+          "title": "42 Check",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "c42check": [
+        {
+          "id": "c42check.view",
+          "name": "検証ツール"
+        }
+      ]
+    },
+    "commands": [
+      { "command": "c42check.run", "title": "実行 (チェック済みの項目)", "category": "42 Check", "icon": "$(play)" },
+      { "command": "c42check.cancel", "title": "実行を中止", "category": "42 Check", "icon": "$(debug-stop)" },
+      { "command": "c42check.refresh", "title": "ツールを再検出", "category": "42 Check", "icon": "$(refresh)" },
+      { "command": "c42check.regenerateCompdb", "title": "compile_commands.json / .clangd を再生成", "category": "42 Check" },
+      { "command": "c42check.generateDebugConfig", "title": "launch.json / tasks.json を生成・更新", "category": "42 Check" },
+      { "command": "c42check.proposeAbortOnTaskErrors", "title": "debug.onTaskErrors を abort にする (確認あり)", "category": "42 Check" },
+      { "command": "c42check.cleanWorkDir", "title": ".42check/ を削除", "category": "42 Check" },
+      { "command": "c42check.showLog", "title": "ログを表示", "category": "42 Check" },
+      { "command": "c42check.runArgs", "title": "実行引数を返す (launch.json 用)", "category": "42 Check" }
+    ],
+    "menus": {
+      "view/title": [
+        { "command": "c42check.run", "when": "view == c42check.view && !c42check.running", "group": "navigation@1" },
+        { "command": "c42check.cancel", "when": "view == c42check.view && c42check.running", "group": "navigation@1" },
+        { "command": "c42check.refresh", "when": "view == c42check.view", "group": "navigation@2" },
+        { "command": "c42check.regenerateCompdb", "when": "view == c42check.view", "group": "1_tools@1" },
+        { "command": "c42check.generateDebugConfig", "when": "view == c42check.view", "group": "1_tools@2" },
+        { "command": "c42check.cleanWorkDir", "when": "view == c42check.view", "group": "1_tools@3" }
+      ],
+      "commandPalette": [
+        { "command": "c42check.runArgs", "when": "false" },
+        { "command": "c42check.showLog", "when": "false" }
+      ]
+    },
+    "taskDefinitions": [
+      {
+        "type": "c42check",
+        "required": [
+          "mode"
+        ],
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "check",
+              "pre-debug",
+              "build-debug"
+            ],
+            "description": "check: 段階 0〜2 / pre-debug: 段階 0〜2 + デバッグ用ビルド / build-debug: デバッグ用ビルドのみ (事前チェックを飛ばす)"
+          }
+        }
+      }
+    ],
+    "configuration": {
+      "title": "42 Check",
+      "properties": {
+        "c42check.targetDir": {
+          "type": "string",
+          "default": ".",
+          "description": "検証対象のディレクトリ (ワークスペースルートからの相対パス)。.c / .h をここから再帰的に探します。"
+        },
+        "c42check.includePaths": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "追加の include path (ワークスペースルートからの相対パス)。.h を含むディレクトリは自動で追加されます。"
+        },
+        "c42check.runArgs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "動的チェック (ASan / valgrind) とデバッグ実行に渡す引数。"
+        },
+        "c42check.useMakeCheckTarget": {
+          "type": "boolean",
+          "default": false,
+          "description": "true かつ Makefile に check ターゲットがある場合、scan-build は `make` ではなく `make check` を包んで実行します。"
+        },
+        "c42check.failFast": {
+          "type": "string",
+          "enum": ["stage", "step"],
+          "default": "stage",
+          "enumDescriptions": [
+            "同じ段階の全項目を実行してから止める (既定)",
+            "最初に失敗した項目で止める"
+          ],
+          "description": "fail-fast の粒度。"
+        },
+        "c42check.minFreeSpaceMB": {
+          "type": "number",
+          "default": 200,
+          "minimum": 0,
+          "description": "実行前に確認する、ワークスペースがあるファイルシステムの空き容量の下限 (MB)。下回ると警告して中断します。"
+        },
+        "c42check.workDirMaxMB": {
+          "type": "number",
+          "default": 100,
+          "minimum": 1,
+          "description": ".42check/ の上限サイズ (MB)。超えると警告して中断します。"
+        },
+        "c42check.runTimeoutSec": {
+          "type": "number",
+          "default": 10,
+          "minimum": 1,
+          "description": "動的チェックで対象プログラムを実行する制限時間 (秒)。valgrind は 5 倍まで許容します。超過した場合は skip 扱いになります。"
+        },
+        "c42check.staticTimeoutSec": {
+          "type": "number",
+          "default": 120,
+          "minimum": 1,
+          "description": "静的チェックの各ツールの制限時間 (秒)。"
+        },
+        "c42check.mainFile": {
+          "type": "string",
+          "default": "",
+          "description": "main を持たない課題 (libft など) 用のテスト main (.c) のパス。空なら指定なし。対象ソースに main が無い場合のみ、動的チェックとデバッグ用ビルドに追加されます。"
+        },
+        "c42check.compdb.includeMain": {
+          "type": "boolean",
+          "default": true,
+          "description": "mainFile を compile_commands.json に含めるか (clangd がテスト main も解析できるようになります)。"
+        },
+        "c42check.compdb.source": {
+          "type": "string",
+          "enum": ["auto", "files", "make-n", "clang-MJ"],
+          "default": "auto",
+          "enumDescriptions": [
+            "Makefile があれば make -n を解析し、失敗したら files に戻る",
+            "ソース一覧 + 既定のフラグから直接生成",
+            "make -n -B の出力を解析 (Makefile の実際のフラグを反映)",
+            "clang -MJ で各ファイルの断片を作って結合"
+          ],
+          "description": "compile_commands.json の生成方式。"
+        },
+        "c42check.debug.sanitizer": {
+          "type": "boolean",
+          "default": false,
+          "description": "デバッグ用ビルドに ASan + UBSan を付けるか。"
+        },
+        "c42check.debug.cwd": {
+          "type": "string",
+          "default": "${workspaceFolder}",
+          "description": "launch.json の cwd (生成時に反映)。"
+        },
+        "c42check.debug.terminal": {
+          "type": "string",
+          "enum": ["integrated", "external", "console"],
+          "default": "integrated",
+          "description": "launch.json の terminal (生成時に反映)。"
+        },
+        "c42check.checks": {
+          "type": "object",
+          "default": {
+            "norminette": true,
+            "warnings": true,
+            "clangTidy": true,
+            "scanBuild": true,
+            "gccAnalyzer": true,
+            "asanUbsan": true,
+            "valgrind": true,
+            "cbmc": false,
+            "framaC": false
+          },
+          "description": "チェックボックスの状態 (View から変更すると自動で保存されます)。",
+          "additionalProperties": { "type": "boolean" }
+        }
+      }
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "test": "node esbuild.mjs --test && node --test \"out-test/*.test.js\"",
+    "package": "npm run typecheck && node esbuild.mjs --production && vsce package --no-dependencies",
+    "vscode:prepublish": "node esbuild.mjs --production"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^4.0.0",
+    "esbuild": "^0.28.0",
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,0 +1,8 @@
+node_modules/
+dist/
+out-test/
+*.vsix
+.42check/
+# サンプルを開いて検証したときに生成されるもの
+samples/**/compile_commands.json
+samples/**/.clangd
