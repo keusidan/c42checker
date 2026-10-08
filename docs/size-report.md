@@ -1,7 +1,11 @@
 # 容量の実測
 
-目標: 完成品の合計 **500MB 以内** (校舎マシンの home の空きが約 1.9GB、rclone マウント上には置けないため)。
-測定日: 2026-10-07。測定環境: Ubuntu 24.04 の sandbox (校舎マシンではない)。`du -sh` の結果を記載する。
+目標: 自作分の合計 **500MB 以内**。CodeLLDB と clangd は 500MB の対象外で、別に計測し、home の空きに収まるかを確認する (rclone マウント上には置けないため)。
+
+- 自作分の測定日: 2026-10-07。環境: Ubuntu 24.04 の sandbox (`du -sh` の結果)
+- 依存拡張・校舎の空き容量の測定日: 2026-10-08。環境: 校舎マシン (Ubuntu 22.04) の実機。**ユーザーが共有した検証報告に基づく数値で、私は再現していない**
+
+**前提の訂正**: 当初は校舎の home の空きを約 1.9GB と想定していたが、実測は **約 1.1GB** (4.7GB 中 3.6GB 使用) だった。
 
 ## 自作分 (500MB の対象)
 
@@ -27,28 +31,38 @@
 - `.42check/` は実行のたびに削除して作り直す。ビルドごとの上限 (`c42check.workDirMaxMB`、既定 100MB) を超えると警告して中断する (テスト `.42check/ が上限を超えたら中断する`)。
 - 実行前に `statfs` (`df` と同じ情報) でワークスペースの空きを確認し、`c42check.minFreeSpaceMB` (既定 200MB) 未満なら中断する (テスト `段階 0 が失敗 (空き容量不足)`)。
 
-### 校舎マシンで `node_modules` を残したくない場合
+### 校舎でビルドしない (推奨)
 
-`.vsix` を作った後は `node_modules` が不要になる。次で 144MB を解放できる。
-
-```sh
-npm ci && npm run package && rm -rf node_modules
-```
-
-(`node_modules` が home の空きを圧迫する場合は、メイン機でビルドした `.vsix` を Drive 経由で受け渡す。これは指示のとおり「Drive は完成した `.vsix` の受け渡し用途」にあたる。)
+校舎の Node は v12.22.9 で、ビルドには Node 22 以上が要る (`@vscode/vsce` が 22 以上、esbuild が 18 以上)。
+メイン機でビルドした `.vsix` を Drive 経由で受け渡す (指示のとおり、Drive は完成した `.vsix` の受け渡し用途)。
+どうしても校舎でビルドする場合は、公式の `tar.xz` を home に展開して Node 22 を入れる方法があるが、展開後に約 205MB かかる。
+ビルド後は `rm -rf node_modules` で 144MB を解放できる。
 
 ## 依存する既存拡張機能 (500MB の対象外。別計測)
 
-**この環境では計測できていない** (VS Code / Marketplace / Open VSX への通信が遮断されているため、拡張もバイナリも取得できない)。
-次のコマンドで、導入後に実測して、この表に追記すること。
+校舎の実機での実測 (2026-10-08、ユーザー報告):
 
-| 項目 | 測定コマンド (導入後) | サイズ |
+| 項目 | サイズ | 備考 |
 |---|---|---|
-| CodeLLDB (LLDB 同梱) | `du -sh ~/.vscode/extensions/vadimcn.vscode-lldb-*` | 未計測 |
-| clangd 拡張本体 | `du -sh ~/.vscode/extensions/llvm-vs-code-extensions.vscode-clangd-*` | 未計測 |
-| clangd バイナリ (拡張がダウンロードした場合) | `find ~ -type f -name 'clangd*' -path '*globalStorage*' -exec du -sh {} +` (保存先は拡張のストレージ配下と思われるが未確認) | 未計測 |
+| CodeLLDB (LLDB 同梱) | **165MB** | 版 1.12.2 |
+| clangd 拡張本体 | **1.5MB** | |
+| clangd バイナリ | **225MB** | 拡張が自動でダウンロード (版 23.1.0)。保存先は `~/.config/Code/User/globalStorage/llvm-vs-code-extensions.vscode-clangd/install/`。`.vsix` のインストールの約 1 分後にダウンロードされ、`clangd.path` がユーザー設定に自動で書き込まれた |
+| 42 Check 本体 (インストール後) | **92KB** | 当初見積もり (約 76KB) より大きい。README の追記と、その後の機能追加による |
+| 小計 (依存と本体) | **約 392MB** | |
 
-校舎の空き 1.9GB に収まるかの判定式:
-`自作分 (約 147MB) + CodeLLDB + clangd 拡張 + clangd バイナリ  <  1.9GB`
-左辺のうち未計測の 3 つの合計が約 1.75GB 未満であれば収まる。導入前に `df -h ~` で空きを確認すること
-(clangd のダウンロード前の注意は、拡張が起動時に通知する)。
+### 合計と、空きに収まるか
+
+| 構成 | 合計 | 校舎の空き 1.1GB に対して |
+|---|---|---|
+| 自作分のみ (`node_modules` を含む開発ワークスペース) | 約 147MB | **500MB の目標内** ✅ |
+| 自作分 + CodeLLDB + clangd (拡張 + バイナリ) | 約 **540MB** (147 + 165 + 1.5 + 225) | 収まる (約 49%)。ただし 500MB を超える ⚠ |
+| 上記 + 校舎で Node 22 を展開してビルドする場合 | 約 **745MB** (+ 205MB) | 収まるが、残りは約 350MB。`.42check/` の上限 (100MB) と空き容量の閾値 (既定 200MB) を考えると余裕は小さい ⚠ |
+| 推奨: メイン機で `.vsix` をビルドし、校舎には `.vsix` だけ持っていく | 約 **392MB** (依存と本体のみ。`node_modules` と Node は不要) | 十分収まる ✅ |
+
+- 「500MB 以内」は自作分の目標で、依存拡張は対象外だった。ただし依存込みの約 540MB はこの目標も超えているので、
+  推奨構成 (校舎ではビルドしない) を採ることで、校舎に置く量を約 392MB に抑えられる。
+- clangd バイナリ (225MB) が最大の項目。空きが足りないときは、**clangd 拡張を入れない**という選択ができる (検証と F5 は clangd に依存しない)。
+  clangd 拡張は入れると自動でバイナリをダウンロードするため、入れる前に `df -h ~` で空きを確認すること。
+- 測定コマンド (別の環境で再測定するとき):
+  `du -sh ~/.vscode/extensions/vadimcn.vscode-lldb-*`、`du -sh ~/.vscode/extensions/llvm-vs-code-extensions.vscode-clangd-*`、
+  `du -sh ~/.config/Code/User/globalStorage/llvm-vs-code-extensions.vscode-clangd`、`df -h ~`

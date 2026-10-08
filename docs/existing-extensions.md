@@ -84,9 +84,15 @@
 出典: [Extension Manifest (VS Code docs)](https://code.visualstudio.com/api/references/extension-manifest) (本文は取得できず検索結果の要約のみ)、
 [different ways to create vscode extension dependencies](https://docs.lextudio.com/blog/different-ways-to-create-vscode-extension-dependencies/) (取得不可、検索結果の要約のみ)。
 
-**未確認 (実機で要検証)**: 「`.vsix` をローカルから `code --install-extension` で入れたときに、依存先が Marketplace から自動で入るか」は、この環境に VS Code と Marketplace への経路が無いため**実行できていない**。
-手順は [verification.md](verification.md) の項目 5。結果によって、`extensionDependencies` を維持するか、README で依存 2 つを明示的に `--install-extension` する手順に倒すかを決める。
-どちらの場合でも、README のインストール手順は依存 2 つを明示的に入れる形で書いてあるので、自動導入に失敗しても利用できる。
+**実機での確認結果 (校舎、2026-10-08、ユーザー報告)**:
+
+- `code --install-extension *.vsix` で、clangd 拡張 (`extensionPack`) が**自動で入った** ✅
+- CodeLLDB (`extensionDependencies`) は、もともと入っていたため**確認できていない**。外した状態で試す手順は [verification.md](verification.md) の項目 5
+- 確認できた CodeLLDB の版は 1.12.2 (上の「日付の食い違い」で触れた 1.12.3 とは別。導入環境によって Marketplace が出す版が違う可能性がある)
+- clangd 拡張は、`.vsix` のインストールの約 1 分後に clangd バイナリ (225MB) を自動でダウンロードする。保存先は `~/.config/Code/User/globalStorage/llvm-vs-code-extensions.vscode-clangd/install/`
+  で、`clangd.path` がユーザー設定に書き込まれる。容量に注意 ([size-report.md](size-report.md))
+
+`extensionDependencies` / `extensionPack` の現在の宣言は維持する。README のインストール手順には、念のため依存 2 つを明示的に入れるコマンドも載せてある。
 
 ## 新しい機能を足すときの手順 (既存の拡張で足りないか、先に調べる)
 

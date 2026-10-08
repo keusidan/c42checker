@@ -7,7 +7,9 @@ F5 で CodeLLDB のデバッガを起動でき、**事前チェックに落ち�
 方針と採用理由は [docs/existing-extensions.md](docs/existing-extensions.md)、動作確認の結果は [docs/verification.md](docs/verification.md)、容量の実測は [docs/size-report.md](docs/size-report.md) を参照してください。
 
 > **状況**: コア (検証の実行、fail-fast、`compile_commands.json` 生成、launch / tasks の生成) は実際のツールでテスト済みです。
-> VS Code 上での動作 (F5 でデバッガが止まること、依存拡張の自動導入) は開発環境に VS Code が無く**未確認**です。確認手順は [docs/verification.md](docs/verification.md) にあります。
+> 校舎マシン (Ubuntu 22.04、`-12` 系のツール) の実機で、サンプル 5 つに対して全チェック項目を 1 つずつ実行し、期待どおりの結果になることが報告されています
+> (詳細は [docs/verification.md](docs/verification.md))。
+> **VS Code の画面上の動作** (F5 でデバッガが止まること、Problems への表示、clangd の補完) は、まだ確認できていません。
 
 ## 実行の段階
 
@@ -39,25 +41,42 @@ F5 で CodeLLDB のデバッガを起動でき、**事前チェックに落ち�
 
 ## インストール
 
-校舎 (Ubuntu 22.04、sudo なし) とメイン機 (Arch + zsh) のどちらでも、sudo は不要です。
+**推奨: メイン機 (Arch) で `.vsix` をビルドし、校舎には `.vsix` だけを持っていく。**
+ビルドには **Node.js 22 以上**が要ります (`@vscode/vsce` は Node 22 以上、esbuild は Node 18 以上、テストの `node --test` も新しい Node が必要)。
+校舎の Node は **v12.22.9** なので、校舎ではビルドもテストもできません (`node esbuild.mjs` は構文エラーで止まります)。
+拡張そのものは VS Code 同梱の Node で動くため、校舎の Node の版は関係ありません。
 
 ```sh
+# メイン機 (Node 22 以上):
 git clone https://github.com/keusidan/c42checker.git
 cd c42checker
 npm ci
-npm run package                      # c42checker-0.1.0.vsix ができる (約 28KB)
+npm run package                      # c42checker-0.1.0.vsix ができる (約 30KB)
+
+# 校舎 (sudo 不要。.vsix を Drive などで持ってくる):
 code --install-extension c42checker-0.1.0.vsix
-# 依存する 2 つの拡張を明示的に入れる (自動導入は未確認のため、確実な手順)
+```
+
+依存する 2 つの拡張のうち、clangd 拡張は `.vsix` のインストールで自動的に入ることが確認できています (`extensionPack`)。
+CodeLLDB (`extensionDependencies`) は、確認した環境にすでに入っていたため、自動導入は未確認です。入っていなければ、次を実行してください。
+
+```sh
 code --install-extension vadimcn.vscode-lldb
 code --install-extension llvm-vs-code-extensions.vscode-clangd
 ```
 
-- `node_modules` は約 144MB です。校舎の home (空き約 1.9GB) が心配なら、`.vsix` を作った後に `rm -rf node_modules` で消せます。
-  メイン機でビルドした `.vsix` を Drive 経由で持っていくこともできます。
+- 校舎でどうしてもビルドする場合は、sudo なしで Node 22 を入れる方法として、公式の `tar.xz` を home に展開できます
+  (例: `https://nodejs.org/dist/v22.22.0/node-v22.22.0-linux-x64.tar.xz`)。ただし展開後は約 205MB あり、`node_modules` (約 144MB) も加わります。
+  **校舎の home の空きは実測で約 1.1GB** (4.7GB 中 3.6GB 使用) でした。CodeLLDB (165MB) と clangd (拡張 1.5MB + バイナリ 225MB) を入れた状態で、さらに Node + `node_modules` で約 350MB 増えるため、余裕は小さくなります。
+  内訳と合計は [docs/size-report.md](docs/size-report.md) を参照してください。
+- ビルドした後は `rm -rf node_modules` で 144MB を解放できます。
 - **rclone でマウントした Drive 上に、ソース / `node_modules` / `.42check/` を置かないでください。**
   小さなファイルが大量にあると極端に遅くなり、VFS キャッシュは home 側に溜まり、ログアウトでマウントも消えます。
   ソースは Git で管理し、Drive は `.vsix` の受け渡しとバックアップに限ります。実行時に、ワークスペースが rclone のマウント上にあれば警告します。
-- clangd のバイナリが PATH に無いと、clangd 拡張がダウンロードを提案します。承認すると home 配下に保存されて容量を使うので、**承認の前に `df -h ~` で空きを確認**してください (この拡張はダウンロードを代行しません)。
+- clangd のバイナリが PATH に無いと、clangd 拡張がダウンロードします。実機では `.vsix` のインストールの約 1 分後にダウンロードされ、
+  `~/.config/Code/User/globalStorage/llvm-vs-code-extensions.vscode-clangd/install/` に約 225MB が保存され、`clangd.path` がユーザー設定に自動で書き込まれました。
+  容量を使うので、**`.vsix` を入れる前に `df -h ~` で空きを確認**してください (この拡張はダウンロードを代行しません)。
+  容量が足りない場合は、clangd 拡張を入れなくても検証 (段階 0〜2) と F5 は使えます。
 
 ## 使い方
 
@@ -136,6 +155,8 @@ code --install-extension llvm-vs-code-extensions.vscode-clangd
 
 ## 開発
 
+Node.js 22 以上が必要です (`.nvmrc`、`package.json` の `engines`)。
+
 ```sh
 npm ci
 npm run typecheck   # tsc --noEmit
@@ -153,3 +174,5 @@ npm run package     # .vsix を作る
   元のツリーを汚さないよう、`.42check/scan-build/src` にコピーして `make -B` で全ビルドします。
 - GUI や無限ループの課題 (so_long、cub3d など) は、制限時間を超えるため動的チェックが skip になります。その項目のチェックを外してください。
 - ツールの版が違うと検出結果が変わりえます。開発時の確認は clang 18 / gcc 13 / valgrind 3.22 で行っており、校舎の `-12` 系での確認は未実施です。
+- `gcc -fanalyzer` (校舎の gcc-12 で確認) は、`samples/bug-leak` のメモリリークを見逃しました。同じリークを clang-tidy と scan-build、ASan、valgrind は検出しています。
+  gcc の analyzer の検出範囲の限界と思われます。`gcc -fanalyzer` が pass でも、他の項目が fail することがあります。

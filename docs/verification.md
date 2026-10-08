@@ -2,20 +2,35 @@
 
 指示された 6 項目について、**何をどこまで実行したか**を分けて記録する。
 この開発環境 (Linux sandbox) には VS Code 本体が無く、VS Code / Marketplace / Open VSX への通信も遮断されているため、
-VS Code 上でしか確認できない項目は実行できていない。それらは「未実行」と明記し、実機での手順を付けた。
+VS Code 上でしか確認できない項目は私の環境では実行できていない。それらは「未実行」と明記し、実機での手順を付けた。
+
+**校舎の実機での確認 (2026-10-08、ユーザーが共有した検証報告に基づく。私は再現していない)** は、次の節にまとめた。
 
 ## 実行環境と、校舎との差
 
-| ツール | 本環境 (Ubuntu 24.04) | 校舎 (Ubuntu 22.04) の想定 |
+| ツール | 本環境 (Ubuntu 24.04) | 校舎 (Ubuntu 22.04) の実測 |
 |---|---|---|
-| norminette | 3.3.60 (pip) | 校舎の標準版 |
-| clang / clang-tidy / scan-build | 18.1.3 (`-18` 付きのみ。素の `clang-tidy` は PATH に無かったため、`-12` → 素の名前 → 入っている最新版の順で検出する実装にした) | `-12` 系 |
-| gcc | 13.3.0 (`gcc-13`) | gcc-12 |
-| valgrind | 3.22.0 | 校舎のもの |
-| clangd | 18.1.3 (バイナリ単体) | 校舎には無い |
-| Node.js | v22.22.0 | — |
+| norminette | 3.3.60 (pip) | 3.3.59 |
+| clang / clang-tidy / scan-build | 18.1.3 (`-18` 付きのみ。素の `clang-tidy` は PATH に無かったため、`-12` → 素の名前 → 入っている最新版の順で検出する実装にした) | 12.0.1 (`-12` 付き) |
+| gcc | 13.3.0 (`gcc-13`) | gcc-12 は 12.3.0。素の `gcc` は 10.5 だが、`gcc-12` が優先して選ばれる |
+| valgrind | 3.22.0 | 3.18.1 |
+| clangd | 18.1.3 (バイナリ単体) | PATH に無い (拡張がダウンロードしたものを使う) |
+| Node.js | v22.22.0 | **v12.22.9** (ビルド・テストは不可。拡張の実行は VS Code 同梱の Node なので影響なし) |
+| VS Code / CodeLLDB | — | VS Code 1.140、CodeLLDB 1.12.2 |
 
-チェック内容の判定は版によって差が出うる (特に clang-tidy / gcc -fanalyzer の検出)。校舎では `-12` 系で再確認すること。
+### 校舎の実機での確認 (ユーザー報告、2026-10-08)
+
+- ツール検出は想定どおり (`clang-12` / `clang-tidy-12` / `scan-build-12` / `gcc-12` / `valgrind` / `norminette` / `make`)。素の gcc 10.5 ではなく gcc-12 が選ばれた
+- 5 つのサンプル (`ok` / `norm-ng` / `bug-asan` / `bug-leak` / `lib-ok`) に対して、全チェック項目を 1 つずつ実行:
+  正常なサンプルは全項目が成功し、バグ入りのサンプルは想定した項目で失敗として検出された。**`-12` 系での再確認は済み**
+- 拡張のコードを、この環境に合わせて直す必要のある箇所は見つからなかった。直すべきだったのはビルド手順、容量見積もり、ドキュメント上の環境の想定 (このコミットで修正)
+- `gcc-12 -fanalyzer` は `bug-leak` のリークを**見逃した** (clang-tidy と scan-build、ASan、valgrind は検出)。テストは gcc が検出することを前提にしていないので、全件成功のまま。gcc の analyzer の限界と思われる
+- `code --install-extension *.vsix` で、clangd 拡張 (`extensionPack`) が自動で入ることを確認。CodeLLDB (`extensionDependencies`) は、もともと入っていたため確かめられていない
+- clangd 拡張は、`.vsix` のインストールの約 1 分後にバイナリを `~/.config/Code/User/globalStorage/llvm-vs-code-extensions.vscode-clangd/install/` へダウンロードし、`clangd.path` をユーザー設定に書き込んだ
+
+**まだ確認できていない**: VS Code の画面上の動作 (F5 でのデバッガの停止、Problems パネルへの表示、clangd の補完)。
+
+チェック内容の判定は版によって差が出うる (特に clang-tidy / gcc -fanalyzer の検出)。上記の校舎の実測で、`-12` 系でも想定どおりだったことは確認済み。
 
 ## 自動テスト (46 件)
 
@@ -94,7 +109,8 @@ npm test        # = node esbuild.mjs --test && node --test "out-test/*.test.js"
 
 `.vsix` のビルド (`npm run package`) は成功し、manifest に `extensionDependencies: ["vadimcn.vscode-lldb"]` と
 `extensionPack: ["llvm-vs-code-extensions.vscode-clangd"]` が入っていることまでは確認した。
-**導入時の自動解決の挙動は未確認**。
+**導入時の自動解決の挙動**: 校舎の実機 (ユーザー報告) で、`code --install-extension *.vsix` により clangd 拡張 (`extensionPack`) が自動で入ることを確認。
+CodeLLDB (`extensionDependencies`) は、もともと入っていたため未確認 (下記の手順の 1 で CodeLLDB も外せば確認できる)。
 
 **実機での手順** (校舎マシンと自分のメイン機の両方で):
 
@@ -107,8 +123,9 @@ npm test        # = node esbuild.mjs --test && node --test "out-test/*.test.js"
 
 ### 6. 完成品の合計サイズが 500MB 以内 — ✅
 
-約 **147MB** (`node_modules` 144MB を含む)。詳細は [size-report.md](size-report.md)。
-CodeLLDB と clangd (拡張とバイナリ) は別計測で、未計測。
+自作分は約 **147MB** (`node_modules` 144MB を含む) で、500MB の目標内。詳細は [size-report.md](size-report.md)。
+CodeLLDB と clangd は別計測で、校舎の実機での実測は CodeLLDB 165MB、clangd 拡張 1.5MB、clangd バイナリ 225MB (ユーザー報告)。
+依存込みの合計は約 540MB で、500MB は超えるが、校舎の home の実測の空き (約 1.1GB) には収まる。
 
 ## その他、VS Code 上で確認してほしいこと (未実行)
 

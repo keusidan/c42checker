@@ -20,7 +20,7 @@ export async function checkEnvironment(state: vscode.Memento): Promise<void> {
   if (!configured && !findOnPath('clangd') && !state.get<boolean>('c42check.clangdNotified')) {
     await state.update('c42check.clangdNotified', true);
     void vscode.window.showInformationMessage(
-      '42 Check: clangd が PATH にありません。clangd 拡張がダウンロードを提案しますが、承認するとバイナリが home 配下 (拡張のストレージ) に保存され、容量を使います。承認の前に `df -h ~` で空きを確認してください。この拡張はダウンロードを代行しません。',
+      '42 Check: clangd が PATH にありません。clangd 拡張がバイナリをダウンロードし、home 配下 (~/.config/Code/User/globalStorage/ 以下) に約 225MB (実測) 保存されます。空きが少ないときは `df -h ~` で確認し、clangd 拡張を入れない選択もできます (検証と F5 は clangd に依存しません)。この拡張はダウンロードを代行しません。',
     );
   }
 }
