@@ -15,6 +15,7 @@ export interface ContextInput {
   settings: Settings;
   io: RunIO;
   signal?: AbortSignal;
+  isFileDirty?: (absPath: string) => boolean;
   /** テスト用: ツール検出を差し替える */
   tools?: Tools;
 }
@@ -39,5 +40,6 @@ export function createContext(input: ContextInput): Context {
     hasMakefile: !!findMakefile(targetRoot),
     io: input.io,
     signal: input.signal,
+    isFileDirty: input.isFileDirty,
   };
 }

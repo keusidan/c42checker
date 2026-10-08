@@ -13,6 +13,8 @@ export const CANDIDATES: Record<keyof Tools, string[]> = {
   make: ['make'],
   cbmc: ['cbmc'],
   framaC: ['frama-c'],
+  // Ubuntu は ctags-universal (ctags は alternatives)。素の ctags は Exuberant / GNU 版のことがあるので最後
+  ctags: ['universal-ctags', 'ctags-universal', 'ctags'],
 };
 
 export function findOnPath(name: string, envPath = process.env.PATH ?? ''): string | undefined {
@@ -70,6 +72,8 @@ export const STEP_TOOL: Record<StepId, keyof Tools> = {
   scanBuild: 'scanBuild',
   gccAnalyzer: 'gcc',
   asanUbsan: 'cc',
+  tsan: 'cc',
+  msan: 'cc',
   valgrind: 'valgrind',
   cbmc: 'cbmc',
   framaC: 'framaC',
@@ -86,4 +90,5 @@ export const INSTALL_HINTS: Record<keyof Tools, string> = {
   make: 'make が PATH にありません',
   cbmc: 'cbmc が PATH にありません。ネイティブ版のみ対応です (校舎では Docker image を pull しない方針)',
   framaC: 'frama-c が PATH にありません。ネイティブ版のみ対応です (校舎では Docker image を pull しない方針)',
+  ctags: 'universal-ctags (ctags-universal) が PATH にありません。Arch: `sudo pacman -S ctags` / Ubuntu: `sudo apt install universal-ctags`。プロトタイプ同期のみで使います',
 };

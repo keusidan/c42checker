@@ -56,7 +56,7 @@ export async function buildBinary(
   };
 }
 
-export const DEBUG_FLAGS = ['-g', '-O0', '-fno-omit-frame-pointer'];
+export const DEBUG_FLAGS = ['-g', '-O0', '-fno-omit-frame-pointer', '-pthread'];
 
 export function debugFlags(ctx: Context): string[] {
   return ctx.settings.debugSanitizer

@@ -5,6 +5,8 @@ export const STEP_IDS = [
   'scanBuild',
   'gccAnalyzer',
   'asanUbsan',
+  'tsan',
+  'msan',
   'valgrind',
   'cbmc',
   'framaC',
@@ -57,6 +59,12 @@ export interface Settings {
   compdbIncludeMain: boolean;
   compdbSource: CompdbSource;
   debugSanitizer: boolean;
+  /** プロトタイプ同期: 書き換え対象のヘッダ (root からの相対パス。空なら自動判定) */
+  protoHeader: string;
+  /** プロトタイプ同期: 関数定義を抽出する .c のディレクトリ (空なら targetDir) */
+  protoSourceDir: string;
+  protoSyncOnRun: boolean;
+  protoSyncOnSave: boolean;
   checks: Record<StepId, boolean>;
 }
 
@@ -67,6 +75,8 @@ export const DEFAULT_CHECKS: Record<StepId, boolean> = {
   scanBuild: true,
   gccAnalyzer: true,
   asanUbsan: true,
+  tsan: false,
+  msan: false,
   valgrind: true,
   cbmc: false,
   framaC: false,
@@ -86,6 +96,10 @@ export const DEFAULT_SETTINGS: Settings = {
   compdbIncludeMain: true,
   compdbSource: 'auto',
   debugSanitizer: false,
+  protoHeader: '',
+  protoSourceDir: '',
+  protoSyncOnRun: false,
+  protoSyncOnSave: false,
   checks: { ...DEFAULT_CHECKS },
 };
 
@@ -100,6 +114,8 @@ export interface Tools {
   make?: string;
   cbmc?: string;
   framaC?: string;
+  /** PATH 上の候補名。Universal Ctags かどうかは使う直前に --version で確認する */
+  ctags?: string;
 }
 
 export interface RunIO {
@@ -120,4 +136,6 @@ export interface Context {
   hasMakefile: boolean;
   io: RunIO;
   signal?: AbortSignal;
+  /** エディタで未保存の変更があるファイルか (ヘッダを上書きしないため)。VS Code 側から渡す */
+  isFileDirty?: (absPath: string) => boolean;
 }

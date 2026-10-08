@@ -19,7 +19,7 @@ F5 で CodeLLDB のデバッガを起動でき、**事前チェックに落ち�
 |---|---|
 | 0 準備 | 空き容量の確認 → `.42check/` の作り直し → ツール検出 → `compile_commands.json` / `.clangd` の生成 |
 | 1 事前チェック (静的) | norminette / 警告強化ビルド (`-Wall -Wextra -Werror -Wshadow -Wconversion`) / clang-tidy (`clang-analyzer-*,bugprone-*`) / scan-build / `gcc -fanalyzer` |
-| 2 動的チェック | ASan(AddressSanitizer) + UBSan(UndefinedBehaviorSanitizer) ビルドの実行 → valgrind 用の**別ビルド**の実行。任意で CBMC / Frama-C Eva (ネイティブにある場合のみ) |
+| 2 動的チェック | ASan(AddressSanitizer) + UBSan(UndefinedBehaviorSanitizer) / TSan(ThreadSanitizer) / MSan(MemorySanitizer) / valgrind を、**項目ごとに別ビルド**で実行。任意で CBMC / Frama-C Eva (ネイティブにある場合のみ) |
 | 3 デバッガ | F5 経由のときのみ。デバッグ用ビルド (`.42check/debug/prog`) の後、CodeLLDB が起動 |
 
 - 同じ段階の中は全項目を実行して結果をまとめます (`c42check.failFast: "stage"`、既定)。`"step"` にすると最初の失敗で止まります。
@@ -35,9 +35,22 @@ F5 で CodeLLDB のデバッガを起動でき、**事前チェックに落ち�
 | `gcc -fanalyzer` | `-Wanalyzer-*` の診断を error 扱い |
 | UBSan | `-fno-sanitize-recover=undefined` で最初の違反で止める |
 | valgrind | `--error-exitcode=99`、閉じていない (継承されていない) fd も fail |
+| TSan | `WARNING: ThreadSanitizer` の報告で fail (データ競合の位置に診断)。制限時間は他の 3 倍 |
+| MSan | `WARNING: MemorySanitizer` の報告で fail (未初期化値の使用位置に診断、origins を追跡)。制限時間は他の 3 倍 |
 | 動的チェックの実行 | stdin は `/dev/null`、制限時間 (`c42check.runTimeoutSec`) を超えると**検査が完了していないので skip** (失敗にはしません) |
 
 プログラムが正常に `exit(1)` するだけでは、ASan / valgrind 側では失敗にしません (sanitizer / valgrind の報告があるかで判定)。
+
+### sanitizer の選択 (ASan+UBSan / TSan / MSan)
+
+sanitizer は互いに併用できないため、View の段階 2 に**別々のチェックボックス**として並んでいます (既定は ASan+UBSan が ON、TSan と MSan は OFF)。
+複数にチェックすると、**複数回に分けて**、項目ごとに別ビルド (`.42check/asan/`、`tsan/`、`msan/`) で順番に実行され、結果も項目ごとに出ます。
+
+- TSan はスレッドを使う課題 (philosophers など) で意味があります。MSan は clang 専用です。
+- MSan は、プログラムが使うコードのすべてが instrument されている必要があり、そうでないと誤検出することがあります (libc は主な関数を interceptor が補います)。
+  MSan の誤検出が疑わしいときは、valgrind の結果と照らして判断してください。出典: [MemorySanitizer — Clang docs (版つきの複製)](https://releases.llvm.org/3.6.2/tools/docs/MemorySanitizer.html)
+- sanitizer のランタイム (Ubuntu: `libclang-rt-<版>-dev`) が無い、または TSan / MSan がカーネルの ASLR 設定で起動できない環境では、**失敗ではなく skip + 理由 + 対処案**になります。
+  後者は `sudo sysctl vm.mmap_rnd_bits=28` で回避できることがありますが、sudo の無い校舎では使えません。出典: [PX4 docs: Sanitizers](https://docs.px4.io/main/en/test_and_ci/sanitizers)、[ziggit: ThreadSanitizer: unexpected memory mapping error](https://ziggit.dev/t/threadsanitizer-unexpected-memory-mapping-error/4930)
 
 ## インストール
 
@@ -51,7 +64,7 @@ F5 で CodeLLDB のデバッガを起動でき、**事前チェックに落ち�
 git clone https://github.com/keusidan/c42checker.git
 cd c42checker
 npm ci
-npm run package                      # c42checker-0.1.0.vsix ができる (約 30KB)
+npm run package                      # c42checker-0.1.0.vsix ができる (約 39KB)
 
 # 校舎 (sudo 不要。.vsix を Drive などで持ってくる):
 code --install-extension c42checker-0.1.0.vsix
@@ -85,6 +98,41 @@ code --install-extension llvm-vs-code-extensions.vscode-clangd
 3. View タイトルの ▶、またはステータスバーの `42 Check` で実行。実行中は ■ で中止できる
 4. 結果: 各項目に ✔ / ✘ / skip のアイコン。問題は Problems パネル (ファイル・行・列つき)、生ログはツールごとの Output Channel (`42 Check: <ツール名>`)
 5. 未検出のツールは「未検出」と出て、実行すると **skip + 理由 + 対処案** になります (失敗ではありません)
+6. View の下の方に、**「ヘッダ」**(プロトタイプの反映) と **「設定」**(真偽値の設定のチェックボックス) のグループがあります (次の 2 節)
+
+### 設定のチェックボックス (View の「設定」グループ)
+
+次の 5 つを、settings.json を開かずに ON / OFF できます。状態は**ワークスペースの settings.json の対応キーと双方向に同期**します
+(View で変えると settings.json が書き換わり、settings.json を直接編集すると View のチェックが追従します)。**5 つとも既定は OFF** です。
+
+| チェックボックス | 対応する設定キー |
+|---|---|
+| failFast を step にする | `c42check.failFast` (ON = `"step"` / OFF = `"stage"`) |
+| ASan 付きデバッグ | `c42check.debug.sanitizer` |
+| Makefile の check ターゲットを使う | `c42check.useMakeCheckTarget` |
+| 実行時 (段階 0) にプロトタイプを同期 | `c42check.proto.syncOnRun` |
+| 保存時にプロトタイプを同期 | `c42check.proto.syncOnSave` |
+
+### ヘッダにプロトタイプを反映
+
+`.c` の関数定義からプロトタイプを作り、ヘッダの**マーカーの間だけ**を書き換えます。抽出には **universal-ctags** (`ctags-universal`) を使い、C のパーサは自作していません。
+
+```c
+/* ---- auto prototypes begin ---- */
+/* ---- auto prototypes end ---- */
+```
+
+- コマンドパレットの「42 Check: ヘッダにプロトタイプを反映」、または View の「ヘッダ」グループの項目から実行します。
+- 対象は `c42check.proto.sourceDir` 以下の `.c` (再帰。空なら `c42check.targetDir`)。**static 関数と `main` は除外**します。同名の定義が複数あれば (`#ifdef`) 最初の 1 つだけです。
+- 書き込み先は `c42check.proto.header` (空ならマーカーのあるヘッダを自動選択。複数あれば選択を求めます)。
+- **書き換える前に、差分をプレビューで表示**し、承認してから書き込みます。
+- **マーカーが無いヘッダには、勝手に挿入しません。** 挿入位置 (最後の `#endif` の直前、ガードが無ければ末尾) と差分を見せて、承認を取ります。マーカーが壊れている (片方だけ、重複、順序が逆) 場合はエラーです。
+- 42 Norm の形式で出力します: 戻り値の型の後ろはタブ、ポインタは関数名側に寄せ (`char\t*ft_strdup(const char *s);`)、関数名の桁を揃え、ファイルごとに `/* path/to/file.c */` で区切ります。引数なしは `(void)` にします。
+- **書き込み後に `norminette` でヘッダを検査**します。指摘があれば Problems に出し、「元に戻す」を選べます。
+- **ctags の結果が空** (対象に static / main しか無い、`.c` が無いなど)、ctags が失敗した、関数ポインタを返す関数など宣言に直せないものがある、ヘッダに未保存の変更がある、のいずれかなら、**ヘッダに触らずエラー**にします。
+- ctags が無い、または Universal Ctags ではない (Exuberant / GNU 版) 環境では、**skip + 理由 + 対処案**を表示します。
+- 「実行時 (段階 0)」と「保存時」の自動同期 (既定 OFF) は、承認を取れないため**差分プレビューを出さず**、マーカーがあるヘッダだけを書き換えます (マーカーが無ければ何もしません)。
+  実行時の同期で、結果が空・ctags の失敗が起きたときは、段階 0 で失敗として止まります。ctags が無いときは skip で、実行は続きます。
 
 ### F5 でデバッグする
 
@@ -134,8 +182,12 @@ code --install-extension llvm-vs-code-extensions.vscode-clangd
 | `c42check.compdb.includeMain` | `true` | `mainFile` を `compile_commands.json` に含めるか |
 | `c42check.compdb.source` | `"auto"` | `compile_commands.json` の生成方式 |
 | `c42check.debug.sanitizer` | `false` | デバッグ用ビルドに ASan + UBSan を付ける |
+| `c42check.proto.header` | `""` | プロトタイプを反映するヘッダ (空ならマーカーのあるヘッダを自動選択) |
+| `c42check.proto.sourceDir` | `""` | 関数定義を抽出する `.c` のディレクトリ (空なら `targetDir`) |
+| `c42check.proto.syncOnRun` | `false` | 実行時 (段階 0) にプロトタイプを同期 (プレビューなし) |
+| `c42check.proto.syncOnSave` | `false` | `.c` の保存時にプロトタイプを同期 (プレビューなし) |
 | `c42check.debug.cwd` / `.terminal` | `${workspaceFolder}` / `integrated` | launch 構成に反映 |
-| `c42check.checks` | (全項目。CBMC / Frama-C のみ `false`) | チェックボックスの状態 (View から変更すると保存される) |
+| `c42check.checks` | (全項目。TSan / MSan / CBMC / Frama-C のみ `false`) | チェックボックスの状態 (View から変更すると保存される) |
 
 `.42check/` は実行のたびに削除して作り直し、`.gitignore` に自動で追記します。
 
@@ -150,6 +202,9 @@ code --install-extension llvm-vs-code-extensions.vscode-clangd
 | `samples/bug-asan` | 実行時の heap-buffer-overflow (静的解析では見えにくい) | 段階 1 は pass、段階 2 で ASan と valgrind が fail |
 | `samples/bug-leak` | メモリリーク + 閉じていない fd | 段階 1 の clang-tidy と scan-build が fail (段階 2 は実行されない) |
 | `samples/lib-ok` | main の無いライブラリ課題。`tests/test_main.c` を `c42check.mainFile` で指定 | 動的チェックとデバッグ用ビルドまで pass |
+| `samples/bug-tsan` | 2 スレッドが同じ変数を同期なしで更新 (データ競合) | TSan だけが fail (ASan / MSan は pass) |
+| `samples/bug-msan` | 初期化していないヒープ領域の読み取り | MSan が fail |
+| `samples/proto-ok` | `src/` 以下の複数ファイル (static 関数・関数ポインタ引数・`unsigned long long` を含む) と、マーカーつきのヘッダ `includes/proj.h` | 「ヘッダにプロトタイプを反映」で、norminette を通るヘッダができ、プロジェクトがコンパイルできる |
 
 実機での確認手順 (F5、依存拡張の導入) は [docs/verification.md](docs/verification.md) を参照してください。
 
@@ -161,7 +216,7 @@ Node.js 22 以上が必要です (`.nvmrc`、`package.json` の `engines`)。
 npm ci
 npm run typecheck   # tsc --noEmit
 npm run build       # esbuild で dist/extension.js に bundle
-npm test            # 46 件。実際のツール (norminette / clang / valgrind など) があれば使い、無ければ該当項目は skip
+npm test            # 79 件。実際のツール (norminette / clang / valgrind など) があれば使い、無ければ該当項目は skip
 npm run package     # .vsix を作る
 ```
 
@@ -176,3 +231,5 @@ npm run package     # .vsix を作る
 - ツールの版が違うと検出結果が変わりえます。開発時の確認は clang 18 / gcc 13 / valgrind 3.22 で行っており、校舎の `-12` 系での確認は未実施です。
 - `gcc -fanalyzer` (校舎の gcc-12 で確認) は、`samples/bug-leak` のメモリリークを見逃しました。同じリークを clang-tidy と scan-build、ASan、valgrind は検出しています。
   gcc の analyzer の検出範囲の限界と思われます。`gcc -fanalyzer` が pass でも、他の項目が fail することがあります。
+- 校舎の clang-12 に sanitizer のランタイム (compiler-rt) が入っていない、または TSan / MSan が動かない場合は、その項目は skip になります (校舎の `-12` 系での TSan / MSan と、ctags は未確認です)。
+- ctags は Universal Ctags でなければ使えません。校舎に無い場合は、プロトタイプの反映は skip になります (検証 本体には影響しません)。

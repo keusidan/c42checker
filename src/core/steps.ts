@@ -212,58 +212,127 @@ const gccAnalyzer: StepDef = {
 
 const runMs = (ctx: Context) => ctx.settings.runTimeoutSec * 1000;
 
-const asanUbsan: StepDef = {
+interface SanitizerSpec {
+  id: StepId;
+  label: string;
+  dir: string; // .42check/<dir>/prog (sanitizer 同士は併用できないので別ビルド)
+  flags: string[];
+  env: (detectLeaks: number) => NodeJS.ProcessEnv;
+  /** 実行時出力にこれが現れたら「sanitizer が報告した」とみなす */
+  reported: RegExp;
+  /** valgrind 同様、sanitizer 付きは遅いので制限時間に掛ける倍率 */
+  timeoutFactor: number;
+  /** LeakSanitizer を使う (ptrace 制限環境では detect_leaks=0 で再実行する) */
+  leaks?: boolean;
+}
+
+// sanitizer のランタイム (libclang_rt.*) が無い / このツールチェーンが未対応のとき。ユーザーのコードの問題ではない
+const RUNTIME_MISSING = /libclang_rt\.[a-z_]+-[a-z0-9_]+\.a|unsupported option '-fsanitize|invalid argument '[^']*' to -fsanitize|unsupported option '-fsanitize/;
+// TSan / MSan がカーネルの ASLR 設定などで起動できないとき (環境依存の既知の問題)
+const CANNOT_START = /unexpected memory mapping|ThreadSanitizer: unsupported|MemorySanitizer: unsupported|FATAL: (Thread|Memory)Sanitizer: .*(mapping|ASLR)/i;
+
+/** ASan+UBSan / TSan / MSan は、項目ごとに別ビルド・別実行にする (複数選択すると複数回に分けて実行される)。 */
+function sanitizerStep(spec: SanitizerSpec): StepDef {
+  return {
+    id: spec.id,
+    label: spec.label,
+    stage: 2,
+    prerequisite: (ctx) => first(needTool(ctx, 'cc', 'clang'), noSources(ctx), needMain(ctx)),
+    async run(ctx) {
+      const flags = ['-g', '-O1', '-fno-omit-frame-pointer', '-pthread', ...spec.flags];
+      const b = await buildBinary(ctx, path.join(ctx.workDir, spec.dir), flags, 'clang');
+      if (!b.ok) {
+        if (RUNTIME_MISSING.test(b.output)) {
+          return {
+            status: 'skip',
+            diags: [],
+            log: b.output,
+            reason: `${spec.label} のランタイムが使えません (この clang が未対応、または libclang_rt が未導入)`,
+            hint: 'clang の sanitizer ランタイム (Ubuntu: libclang-rt-<版>-dev、Arch: compiler-rt) が必要です。sudo の無い校舎では、この項目のチェックを外してください',
+          };
+        }
+        return { status: 'fail', diags: b.diags, log: b.output, reason: `${spec.label} 用のビルドに失敗しました` };
+      }
+      const timeoutMs = runMs(ctx) * spec.timeoutFactor;
+      const runWith = (detectLeaks: number) =>
+        exec(b.bin, ctx.settings.runArgs, {
+          cwd: ctx.root,
+          timeoutMs,
+          signal: ctx.signal,
+          env: { ...process.env, ...spec.env(detectLeaks) },
+        });
+      let r = await runWith(1);
+      let log = b.output + `$ ${b.bin} ${ctx.settings.runArgs.join(' ')}\n`;
+      if (spec.leaks && /LeakSanitizer has encountered a fatal error|LeakSanitizer does not work under ptrace/.test(r.output)) {
+        log += r.output + '\n[c42check] この環境では LeakSanitizer が使えないため、リーク検査なしで再実行します (リークは valgrind 側で確認してください)\n';
+        r = await runWith(0);
+      }
+      log += r.output;
+      if (CANNOT_START.test(r.output)) {
+        return {
+          status: 'skip',
+          diags: [],
+          log,
+          reason: `${spec.label} がこの環境で起動できませんでした (メモリマップ / ASLR 設定が原因の既知の問題の可能性)`,
+          hint: 'カーネルの vm.mmap_rnd_bits が大きいと起動できないことがあります (`sudo sysctl vm.mmap_rnd_bits=28` で回避できる場合がありますが、sudo の無い校舎では不可)。その場合はこの項目のチェックを外してください',
+        };
+      }
+      if (r.timedOut) {
+        return {
+          status: 'skip',
+          diags: [],
+          log,
+          reason: `制限時間 ${timeoutMs / 1000} 秒で中断したため検査が完了していません`,
+          hint: '`c42check.runTimeoutSec` を延ばす、`c42check.runArgs` で終了する引数を渡す、または GUI / 無限ループの課題ならこの項目のチェックを外してください',
+        };
+      }
+      const diags = parseSanitizer(r.output, ctx.root);
+      const reported = spec.reported.test(r.output);
+      const crashed = r.signal !== null;
+      const failed = reported || crashed || !!r.error;
+      return {
+        status: failed ? 'fail' : 'pass',
+        diags,
+        log,
+        reason: failed
+          ? r.error ?? (reported ? `${spec.label} が問題を報告しました` : `シグナル ${r.signal} で終了しました`)
+          : undefined,
+      };
+    },
+  };
+}
+
+const asanUbsan = sanitizerStep({
   id: 'asanUbsan',
   label: 'ASan + UBSan',
-  stage: 2,
-  prerequisite: (ctx) => first(needTool(ctx, 'cc', 'clang'), noSources(ctx), needMain(ctx)),
-  async run(ctx) {
-    const flags = ['-g', '-O1', '-fsanitize=address,undefined', '-fno-sanitize-recover=undefined', '-fno-omit-frame-pointer'];
-    const b = await buildBinary(ctx, path.join(ctx.workDir, 'asan'), flags, 'clang');
-    if (!b.ok) {
-      return { status: 'fail', diags: b.diags, log: b.output, reason: 'ASan + UBSan 用のビルドに失敗しました' };
-    }
-    const runWith = (detectLeaks: number) =>
-      exec(b.bin, ctx.settings.runArgs, {
-        cwd: ctx.root,
-        timeoutMs: runMs(ctx),
-        signal: ctx.signal,
-        env: {
-          ...process.env,
-          ASAN_OPTIONS: `detect_leaks=${detectLeaks}:color=never`,
-          UBSAN_OPTIONS: 'print_stacktrace=1:color=never',
-        },
-      });
-    let r = await runWith(1);
-    let log = b.output + `$ ${b.bin} ${ctx.settings.runArgs.join(' ')}\n`;
-    if (/LeakSanitizer has encountered a fatal error|LeakSanitizer does not work under ptrace/.test(r.output)) {
-      log += r.output + '\n[c42check] この環境では LeakSanitizer が使えないため、リーク検査なしで再実行します (リークは valgrind 側で確認してください)\n';
-      r = await runWith(0);
-    }
-    log += r.output;
-    if (r.timedOut) {
-      return {
-        status: 'skip',
-        diags: [],
-        log,
-        reason: `制限時間 ${ctx.settings.runTimeoutSec} 秒で中断したため検査が完了していません`,
-        hint: '`c42check.runTimeoutSec` を延ばす、`c42check.runArgs` で終了する引数を渡す、または GUI / 無限ループの課題ならこの項目のチェックを外してください',
-      };
-    }
-    const diags = parseSanitizer(r.output, ctx.root);
-    const reported = /ERROR: (Address|Leak)Sanitizer|runtime error:/.test(r.output);
-    const crashed = r.signal !== null;
-    const failed = reported || crashed || !!r.error;
-    return {
-      status: failed ? 'fail' : 'pass',
-      diags,
-      log,
-      reason: failed
-        ? r.error ?? (reported ? 'sanitizer が問題を報告しました' : `シグナル ${r.signal} で終了しました`)
-        : undefined,
-    };
-  },
-};
+  dir: 'asan',
+  flags: ['-fsanitize=address,undefined', '-fno-sanitize-recover=undefined'],
+  env: (leaks) => ({ ASAN_OPTIONS: `detect_leaks=${leaks}:color=never`, UBSAN_OPTIONS: 'print_stacktrace=1:color=never' }),
+  reported: /ERROR: (Address|Leak)Sanitizer|runtime error:/,
+  timeoutFactor: 1,
+  leaks: true,
+});
+
+const tsan = sanitizerStep({
+  id: 'tsan',
+  label: 'TSan',
+  dir: 'tsan',
+  flags: ['-fsanitize=thread'],
+  env: () => ({ TSAN_OPTIONS: 'color=never' }),
+  reported: /WARNING: ThreadSanitizer/,
+  timeoutFactor: 3,
+});
+
+const msan = sanitizerStep({
+  id: 'msan',
+  label: 'MSan',
+  dir: 'msan',
+  // MSan は clang 専用。未初期化値の発生元を出すため origins を追跡する
+  flags: ['-fsanitize=memory', '-fsanitize-memory-track-origins'],
+  env: () => ({ MSAN_OPTIONS: 'color=never' }),
+  reported: /WARNING: MemorySanitizer/,
+  timeoutFactor: 3,
+});
 
 const valgrind: StepDef = {
   id: 'valgrind',
@@ -349,7 +418,7 @@ const framaC: StepDef = {
 };
 
 /** 実行順 (段階 1 → 段階 2、段階内は宣言順)。 */
-export const STEPS: StepDef[] = [norminette, warnings, clangTidy, scanBuild, gccAnalyzer, asanUbsan, valgrind, cbmc, framaC];
+export const STEPS: StepDef[] = [norminette, warnings, clangTidy, scanBuild, gccAnalyzer, asanUbsan, tsan, msan, valgrind, cbmc, framaC];
 
 export function stepById(id: StepId): StepDef {
   const s = STEPS.find((x) => x.id === id);

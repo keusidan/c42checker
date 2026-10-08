@@ -32,20 +32,22 @@ VS Code 上でしか確認できない項目は私の環境では実行できて
 
 チェック内容の判定は版によって差が出うる (特に clang-tidy / gcc -fanalyzer の検出)。上記の校舎の実測で、`-12` 系でも想定どおりだったことは確認済み。
 
-## 自動テスト (46 件)
+## 自動テスト (79 件)
 
 ```sh
 # norminette が PATH に必要。無い場合は該当項目が skip になる
 npm test        # = node esbuild.mjs --test && node --test "out-test/*.test.js"
 ```
 
-結果: **46 件中 46 件 pass、0 fail、0 skip** (2026-10-07、上記の環境)。
+結果: **79 件中 79 件 pass、0 fail、0 skip** (2026-10-07、上記の環境)。
 
 - `test/parse.test.ts`: 出力の parser (gcc / clang / UBSan / norminette (ANSI カラー除去) / ASan / LSan / valgrind)
 - `test/pipeline.test.ts`: fail-fast の制御 (fake step で、段階 1 失敗 → 段階 2 非実行 / `failFast: "step"` / skip は失敗ではない / 空き容量不足 / `.42check/` 上限超過)
 - `test/compdb.test.ts`: `compile_commands.json` の生成 (files / make-n / clang-MJ / auto の 4 方式)、`mainFile` の include 切り替え、`.clangd` を他人のものは上書きしない
 - `test/integration.test.ts`: **実際のツール**で samples を検証 (下表)
 - `test/launch.test.ts`: launch.json / tasks.json の生成とマージ (既存項目は変更しない)
+- `test/proto.test.ts`: プロトタイプ同期。ctags の出力の整形 (純粋関数)、マーカー処理、**本物の universal-ctags 5.9.0** での抽出 → norm 形式で書き込み → **norminette 通過** → 生成したヘッダでプロジェクトがコンパイルできる、冪等性、マーカー無し・壊れ・結果が空・宣言に直せない関数・ctags 無し / Exuberant 版・未保存のヘッダでヘッダが変わらないこと、段階 0 での同期
+- `test/toggles.test.ts`: 「設定」グループ 5 項目の双方向同期 (settings → チェック / チェック → settings、failFast の "step" / "stage" 変換)、既定がすべて OFF、トグルの対応表と package.json の整合
 - `test/workdir.test.ts`: rclone マウントの判定、`.gitignore` への追記、`.42check/` の作り直しと安全装置、容量計測、scan-build 用コピー
 - `test/ui.test.ts`: Runner / TaskProvider の制御フロー。`vscode` module を**最小の stub に差し替えて**実行する。VS Code 本体の挙動は検証していない
 
@@ -136,3 +138,20 @@ CodeLLDB と clangd は別計測で、校舎の実機での実測は CodeLLDB 16
 - `ms-vscode.cpptools` を入れた状態で、競合の通知が出る (設定は書き換わらない)
 - `clangd` が PATH に無い状態で、容量の注意 (`df -h ~`) が通知される
 - 既存の `launch.json` がある状態で `launch.json / tasks.json を生成・更新` を実行すると、上書きされずに差分が表示され、承認後にだけ追記される
+
+## 追加機能 (TSan / MSan、プロトタイプ同期、設定トグル) の確認状況
+
+確認できたこと (本環境: clang 18.1.3、universal-ctags 5.9.0、norminette 3.3.60。上記の自動テストによる):
+
+- TSan が `samples/bug-tsan` のデータ競合を、MSan が `samples/bug-msan` の未初期化読み取りを検出し、位置 (行・列) に診断が付く。正常なサンプルは両方とも pass
+- TSan / MSan / ASan+UBSan を同時にチェックすると、項目ごとに別ビルド (`.42check/asan|tsan|msan/prog`) で順に実行され、判定も独立 (bug-tsan では TSan だけが fail)
+- プロトタイプ同期は、生成されたヘッダが norminette を通り、プロジェクトがコンパイルできる。マーカーが無い / 結果が空などの異常系では、ヘッダが 1 バイトも変わらない
+
+**まだ確認できていないこと**:
+
+- 校舎の `-12` 系での TSan / MSan。clang-12 に compiler-rt が無い場合、または ASLR 設定で起動できない場合は **skip** になる設計だが、実機では未確認
+- 校舎での universal-ctags (入っていない場合は skip)。メイン機の `ctags` が Universal Ctags であること
+- VS Code の画面上の動作: 差分プレビュー (`vscode.diff`) と承認ボタン、「元に戻す」、保存時の自動同期、View の「設定」グループのチェックボックス、「ヘッダ」グループのクリック。
+  UI の制御フローは `vscode` を stub に差し替えたテストで検証したが、VS Code 本体では未実行
+- 保存時 / 実行時の同期で差分プレビューが出ないこと (承認を取れないため、意図した仕様)。マーカーがあるヘッダだけが対象
+

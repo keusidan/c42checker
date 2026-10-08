@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import { generateClangd, generateCompdb } from './compdb';
 import { buildInputs } from './build';
+import { syncAuto } from './proto';
 import { ensureGitignore, freeSpaceMB, isOnRcloneMount, resetWorkDir } from './workdir';
 import type { Context, StepOutcome } from './types';
 
@@ -52,6 +53,19 @@ export async function prepare(ctx: Context): Promise<StepOutcome> {
       reason: '対象の .c ファイルがありません',
       hint: '設定 `c42check.targetDir` を確認してください',
     };
+  }
+  // 実行時のプロトタイプ同期 (既定 OFF)。結果が空 / ctags の失敗は、ヘッダに触らずエラーとして止める
+  if (ctx.settings.protoSyncOnRun) {
+    const r = await syncAuto(ctx);
+    say(`プロトタイプ同期: [${r.status}] ${r.message}`);
+    if (r.log) say(r.log.trimEnd());
+    if (r.status === 'error') {
+      return { status: 'fail', diags: r.norm?.diags ?? [], log, reason: `プロトタイプの同期に失敗しました: ${r.message}`, hint: r.hint };
+    }
+    if (r.status === 'skip' || r.status === 'needs-markers') {
+      say(`  → 同期を飛ばしました (失敗ではありません)。${r.hint ?? ''}`);
+    }
+    if (r.norm?.status === 'fail') say('警告: 反映後のヘッダを norminette が指摘しています (段階 1 の norminette でも検出されます)');
   }
   say(`対象: .c ${ctx.sources.length} 件 / .h ${ctx.headers.length} 件 / include ${ctx.includeDirs.length} 件`);
   const inputs = buildInputs(ctx);

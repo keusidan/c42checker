@@ -10,7 +10,8 @@
     "url": "https://github.com/keusidan/c42checker"
   },
   "engines": {
-    "vscode": "^1.85.0"
+    "vscode": "^1.85.0",
+    "node": ">=22"
   },
   "categories": [
     "Linters",
@@ -53,28 +54,108 @@
       ]
     },
     "commands": [
-      { "command": "c42check.run", "title": "実行 (チェック済みの項目)", "category": "42 Check", "icon": "$(play)" },
-      { "command": "c42check.cancel", "title": "実行を中止", "category": "42 Check", "icon": "$(debug-stop)" },
-      { "command": "c42check.refresh", "title": "ツールを再検出", "category": "42 Check", "icon": "$(refresh)" },
-      { "command": "c42check.regenerateCompdb", "title": "compile_commands.json / .clangd を再生成", "category": "42 Check" },
-      { "command": "c42check.generateDebugConfig", "title": "launch.json / tasks.json を生成・更新", "category": "42 Check" },
-      { "command": "c42check.proposeAbortOnTaskErrors", "title": "debug.onTaskErrors を abort にする (確認あり)", "category": "42 Check" },
-      { "command": "c42check.cleanWorkDir", "title": ".42check/ を削除", "category": "42 Check" },
-      { "command": "c42check.showLog", "title": "ログを表示", "category": "42 Check" },
-      { "command": "c42check.runArgs", "title": "実行引数を返す (launch.json 用)", "category": "42 Check" }
+      {
+        "command": "c42check.run",
+        "title": "実行 (チェック済みの項目)",
+        "category": "42 Check",
+        "icon": "$(play)"
+      },
+      {
+        "command": "c42check.syncPrototypes",
+        "title": "ヘッダにプロトタイプを反映",
+        "category": "42 Check",
+        "icon": "$(symbol-method)"
+      },
+      {
+        "command": "c42check.cancel",
+        "title": "実行を中止",
+        "category": "42 Check",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "c42check.refresh",
+        "title": "ツールを再検出",
+        "category": "42 Check",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "c42check.regenerateCompdb",
+        "title": "compile_commands.json / .clangd を再生成",
+        "category": "42 Check"
+      },
+      {
+        "command": "c42check.generateDebugConfig",
+        "title": "launch.json / tasks.json を生成・更新",
+        "category": "42 Check"
+      },
+      {
+        "command": "c42check.proposeAbortOnTaskErrors",
+        "title": "debug.onTaskErrors を abort にする (確認あり)",
+        "category": "42 Check"
+      },
+      {
+        "command": "c42check.cleanWorkDir",
+        "title": ".42check/ を削除",
+        "category": "42 Check"
+      },
+      {
+        "command": "c42check.showLog",
+        "title": "ログを表示",
+        "category": "42 Check"
+      },
+      {
+        "command": "c42check.runArgs",
+        "title": "実行引数を返す (launch.json 用)",
+        "category": "42 Check"
+      }
     ],
     "menus": {
       "view/title": [
-        { "command": "c42check.run", "when": "view == c42check.view && !c42check.running", "group": "navigation@1" },
-        { "command": "c42check.cancel", "when": "view == c42check.view && c42check.running", "group": "navigation@1" },
-        { "command": "c42check.refresh", "when": "view == c42check.view", "group": "navigation@2" },
-        { "command": "c42check.regenerateCompdb", "when": "view == c42check.view", "group": "1_tools@1" },
-        { "command": "c42check.generateDebugConfig", "when": "view == c42check.view", "group": "1_tools@2" },
-        { "command": "c42check.cleanWorkDir", "when": "view == c42check.view", "group": "1_tools@3" }
+        {
+          "command": "c42check.run",
+          "when": "view == c42check.view && !c42check.running",
+          "group": "navigation@1"
+        },
+        {
+          "command": "c42check.cancel",
+          "when": "view == c42check.view && c42check.running",
+          "group": "navigation@1"
+        },
+        {
+          "command": "c42check.refresh",
+          "when": "view == c42check.view",
+          "group": "navigation@2"
+        },
+        {
+          "command": "c42check.regenerateCompdb",
+          "when": "view == c42check.view",
+          "group": "1_tools@1"
+        },
+        {
+          "command": "c42check.generateDebugConfig",
+          "when": "view == c42check.view",
+          "group": "1_tools@2"
+        },
+        {
+          "command": "c42check.cleanWorkDir",
+          "when": "view == c42check.view",
+          "group": "1_tools@3"
+        },
+        {
+          "command": "c42check.syncPrototypes",
+          "when": "view == c42check.view",
+          "group": "1_tools@0"
+        }
       ],
       "commandPalette": [
-        { "command": "c42check.runArgs", "when": "false" },
-        { "command": "c42check.showLog", "when": "false" }
+        {
+          "command": "c42check.runArgs",
+          "when": "false"
+        },
+        {
+          "command": "c42check.showLog",
+          "when": "false"
+        }
       ]
     },
     "taskDefinitions": [
@@ -106,13 +187,17 @@
         },
         "c42check.includePaths": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "default": [],
           "description": "追加の include path (ワークスペースルートからの相対パス)。.h を含むディレクトリは自動で追加されます。"
         },
         "c42check.runArgs": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "default": [],
           "description": "動的チェック (ASan / valgrind) とデバッグ実行に渡す引数。"
         },
@@ -123,7 +208,10 @@
         },
         "c42check.failFast": {
           "type": "string",
-          "enum": ["stage", "step"],
+          "enum": [
+            "stage",
+            "step"
+          ],
           "default": "stage",
           "enumDescriptions": [
             "同じ段階の全項目を実行してから止める (既定)",
@@ -167,7 +255,12 @@
         },
         "c42check.compdb.source": {
           "type": "string",
-          "enum": ["auto", "files", "make-n", "clang-MJ"],
+          "enum": [
+            "auto",
+            "files",
+            "make-n",
+            "clang-MJ"
+          ],
           "default": "auto",
           "enumDescriptions": [
             "Makefile があれば make -n を解析し、失敗したら files に戻る",
@@ -189,7 +282,11 @@
         },
         "c42check.debug.terminal": {
           "type": "string",
-          "enum": ["integrated", "external", "console"],
+          "enum": [
+            "integrated",
+            "external",
+            "console"
+          ],
           "default": "integrated",
           "description": "launch.json の terminal (生成時に反映)。"
         },
@@ -202,12 +299,36 @@
             "scanBuild": true,
             "gccAnalyzer": true,
             "asanUbsan": true,
+            "tsan": false,
+            "msan": false,
             "valgrind": true,
             "cbmc": false,
             "framaC": false
           },
-          "description": "チェックボックスの状態 (View から変更すると自動で保存されます)。",
-          "additionalProperties": { "type": "boolean" }
+          "description": "チェックボックスの状態 (View から変更すると自動で保存されます)。TSan / MSan は既定で OFF。複数選ぶと、項目ごとに別ビルドで順に実行されます。",
+          "additionalProperties": {
+            "type": "boolean"
+          }
+        },
+        "c42check.proto.header": {
+          "type": "string",
+          "default": "",
+          "description": "プロトタイプを反映するヘッダ (ワークスペースルートからの相対パス)。空なら、マーカーのあるヘッダを自動で選びます (複数あれば選択を求めます)。"
+        },
+        "c42check.proto.sourceDir": {
+          "type": "string",
+          "default": "",
+          "description": "関数定義を抽出する .c のディレクトリ (ワークスペースルートからの相対パス。再帰的に探します)。空なら c42check.targetDir を使います。static 関数と main は除外されます。"
+        },
+        "c42check.proto.syncOnRun": {
+          "type": "boolean",
+          "default": false,
+          "description": "実行時 (段階 0) にプロトタイプを同期します。差分プレビューは出ません。マーカーが無いヘッダには何もしません。結果が空・ctags の失敗は、ヘッダに触らずエラーとして実行を止めます。"
+        },
+        "c42check.proto.syncOnSave": {
+          "type": "boolean",
+          "default": false,
+          "description": ".c の保存時にプロトタイプを同期します。差分プレビューは出ません。マーカーが無いヘッダには何もしません。"
         }
       }
     }

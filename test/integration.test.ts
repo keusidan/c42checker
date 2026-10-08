@@ -125,3 +125,70 @@ test('"Debug (skip checks)" 相当: debugBuildOnly は段階 1・2 を飛ばし�
   assert.deepEqual(r.results.map((x) => x.id), ['prepare', 'debug-build']);
   cleanup();
 });
+
+/* ───────── TSan / MSan (選択式。複数選ぶと項目ごとに別ビルドで順に実行される) ───────── */
+
+const lineOf = (file: string, needle: string) =>
+  fs.readFileSync(file, 'utf8').split('\n').findIndex((l) => l.includes(needle)) + 1;
+
+/** 環境の都合 (ランタイム未導入 / ASLR 設定) で起動できない場合は、失敗ではなく skip になる */
+const cannotRun = (r: Awaited<ReturnType<typeof runPipeline>>, id: string) => {
+  const x = r.results.find((y) => y.id === id);
+  return x?.status === 'skip' && /ランタイム|起動できません/.test(x.reason ?? '');
+};
+
+test('TSan: データ競合を検出し、競合の位置に診断が付く', async (t) => {
+  const { ctx, cleanup } = sampleContext('bug-tsan');
+  if (!need(ctx, 'cc')) return t.skip('clang が無い');
+  const r = await runPipeline(ctx, { selected: ['tsan'] });
+  if (cannotRun(r, 'tsan')) return t.skip('この環境では TSan が使えない');
+  const x = r.results.find((y) => y.id === 'tsan')!;
+  assert.equal(x.status, 'fail', x.log);
+  const line = lineOf(path.join(ctx.root, 'main.c'), '(*count)++');
+  assert.ok(x.diags.some((d) => d.file.endsWith('main.c') && d.line === line && /ThreadSanitizer: data race/.test(d.message)), `main.c:${line}`);
+  cleanup();
+});
+
+test('MSan: 初期化していないヒープの読み取りを検出し、診断が付く', async (t) => {
+  const { ctx, cleanup } = sampleContext('bug-msan');
+  if (!need(ctx, 'cc')) return t.skip('clang が無い');
+  const r = await runPipeline(ctx, { selected: ['msan'] });
+  if (cannotRun(r, 'msan')) return t.skip('この環境では MSan が使えない');
+  const x = r.results.find((y) => y.id === 'msan')!;
+  assert.equal(x.status, 'fail', x.log);
+  const line = lineOf(path.join(ctx.root, 'main.c'), "buf[argc] == 'x'");
+  assert.ok(x.diags.some((d) => d.file.endsWith('main.c') && d.line === line && /MemorySanitizer/.test(d.message)), `main.c:${line}`);
+  cleanup();
+});
+
+test('正常なサンプルは TSan / MSan も通る', async (t) => {
+  const { ctx, cleanup } = sampleContext('ok');
+  if (!need(ctx, 'cc')) return t.skip('clang が無い');
+  const r = await runPipeline(ctx, { selected: ['tsan', 'msan'] });
+  if (cannotRun(r, 'tsan') || cannotRun(r, 'msan')) return t.skip('この環境では TSan / MSan が使えない');
+  assert.equal(r.ok, true, r.results.map((x) => `${x.id}=${x.status}(${x.reason ?? ''})`).join(', '));
+  cleanup();
+});
+
+test('複数選択: ASan+UBSan / TSan / MSan は別ビルド・別バイナリで順に実行され、それぞれ独立に判定される', async (t) => {
+  const { ctx, dir, cleanup } = sampleContext('bug-tsan');
+  if (!need(ctx, 'cc')) return t.skip('clang が無い');
+  const order: string[] = [];
+  const r = await runPipeline(ctx, { selected: ['msan', 'tsan', 'asanUbsan'] }, { onStepStart: (id) => order.push(id) });
+  if (cannotRun(r, 'tsan') || cannotRun(r, 'msan')) return t.skip('この環境では TSan / MSan が使えない');
+  assert.deepEqual(order.filter((x) => x !== 'prepare'), ['asanUbsan', 'tsan', 'msan'], '選択順ではなく、定義順で 1 項目ずつ');
+  for (const sub of ['asan', 'tsan', 'msan']) assert.ok(fs.existsSync(path.join(dir, '.42check', sub, 'prog')), `${sub} は別ビルド`);
+  assert.equal(status(r, 'asanUbsan'), 'pass', 'ASan にはデータ競合は見えない');
+  assert.equal(status(r, 'tsan'), 'fail');
+  assert.equal(status(r, 'msan'), 'pass');
+  assert.equal(r.stoppedAt?.id, 'tsan');
+  cleanup();
+});
+
+test('既定では TSan / MSan は OFF (チェックを入れたときだけ実行される)', () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')) as {
+    contributes: { configuration: { properties: Record<string, { default: Record<string, boolean> }> } };
+  };
+  const d = pkg.contributes.configuration.properties['c42check.checks'].default;
+  assert.deepEqual([d.tsan, d.msan, d.asanUbsan], [false, false, true]);
+});

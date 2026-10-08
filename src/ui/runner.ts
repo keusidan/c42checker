@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { createContext } from '../core/context';
 import { runPipeline, type PipelineReport } from '../core/pipeline';
 import type { StepId, StepResult } from '../core/types';
-import { readSettings, selectedSteps, workspaceRoot } from './config';
+import { isFileDirty, readSettings, selectedSteps, workspaceRoot } from './config';
 import { Problems } from './diagnostics';
 import { Outputs } from './output';
 
@@ -85,6 +85,7 @@ export class Runner implements vscode.Disposable {
         root,
         settings,
         signal: abort.signal,
+        isFileDirty,
         io: { log: (ch, text) => this.outputs.get(ch).append(text) },
       });
       report = await runPipeline(

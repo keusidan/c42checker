@@ -12,6 +12,7 @@
 | チェックボックス UI、結果の集約、Problems / Output への出力 | 自作 | 同上 |
 | launch.json / tasks.json の生成とマージ案の提示 | 自作 | 同上 |
 | norminette / clang / clang-tidy / scan-build / gcc / valgrind の実行 | 各ツールの CLI を呼ぶ | ツール自体は校舎に入っているものを使う |
+| `.c` の関数定義の抽出 (プロトタイプ同期) | universal-ctags (CLI。VS Code 拡張ではない) | C のパーサは自作しない。ctags が返した型・引数を 42 Norm の形式に整形するだけ (自作)。ctags が無い環境では skip。ctags のライセンスと保守状況は、拡張ではないため上の信頼性の基準による確認は行っていない (**未確認**) |
 
 ## 採用した既存拡張機能
 

@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { TOGGLES, type ToggleDef } from '../core/toggles';
 import {
   DEFAULT_CHECKS,
   DEFAULT_SETTINGS,
@@ -41,6 +42,10 @@ export function readSettings(): Settings {
     compdbIncludeMain: c.get<boolean>('compdb.includeMain') ?? d.compdbIncludeMain,
     compdbSource: (c.get<string>('compdb.source') as CompdbSource | undefined) ?? d.compdbSource,
     debugSanitizer: c.get<boolean>('debug.sanitizer') ?? d.debugSanitizer,
+    protoHeader: c.get<string>('proto.header') ?? d.protoHeader,
+    protoSourceDir: c.get<string>('proto.sourceDir') ?? d.protoSourceDir,
+    protoSyncOnRun: c.get<boolean>('proto.syncOnRun') ?? d.protoSyncOnRun,
+    protoSyncOnSave: c.get<boolean>('proto.syncOnSave') ?? d.protoSyncOnSave,
     checks: readChecks(),
   };
 }
@@ -62,4 +67,24 @@ export function debugLaunchOptions(): { cwd: string; terminal: string } {
     cwd: c.get<string>('debug.cwd') ?? '${workspaceFolder}',
     terminal: c.get<string>('debug.terminal') ?? 'integrated',
   };
+}
+
+/** 「設定」グループのチェック状態 = settings.json の対応キーの現在値。 */
+export function readToggle(def: ToggleDef): boolean {
+  const v = cfg().get<unknown>(def.key);
+  return v === undefined ? def.defaultValue : def.fromConfig(v);
+}
+
+/** チェックの変更を、ワークスペースの settings.json の対応キーに書く。 */
+export async function writeToggle(def: ToggleDef, checked: boolean): Promise<void> {
+  await cfg().update(def.key, def.toConfig(checked), vscode.ConfigurationTarget.Workspace);
+}
+
+export function toggleById(id: string): ToggleDef | undefined {
+  return TOGGLES.find((t) => t.id === id);
+}
+
+/** エディタで開かれていて、未保存の変更がある (ディスク上のファイルを書き換えてはいけない) か。 */
+export function isFileDirty(absPath: string): boolean {
+  return vscode.workspace.textDocuments.some((d) => d.isDirty && d.uri.fsPath === absPath);
 }

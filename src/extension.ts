@@ -9,6 +9,7 @@ import { Problems } from './ui/diagnostics';
 import { checkEnvironment } from './ui/envCheck';
 import { generateDebugConfig, proposeAbortOnTaskErrors, suggestAbortIfNeeded } from './ui/launchGen';
 import { Outputs } from './ui/output';
+import { ProtoSync } from './ui/protoCommand';
 import { Runner } from './ui/runner';
 import { CheckTaskProvider } from './ui/taskProvider';
 import { CheckTree } from './ui/tree';
@@ -24,6 +25,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const runner = new Runner(outputs, problems, statusBar);
   const tree = new CheckTree(runner);
+  const proto = new ProtoSync(outputs, problems, runner);
   const treeView = vscode.window.createTreeView('c42check.view', { treeDataProvider: tree });
 
   const reg = vscode.commands.registerCommand;
@@ -33,16 +35,19 @@ export function activate(context: vscode.ExtensionContext): void {
     statusBar,
     runner,
     tree,
+    proto,
     treeView,
     treeView.onDidChangeCheckboxState((e) => void tree.onCheckbox(e.items)),
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('c42check')) tree.refresh();
     }),
+    vscode.workspace.onDidSaveTextDocument((doc) => proto.onSaved(doc)),
     vscode.tasks.registerTaskProvider(CheckTaskProvider.type, new CheckTaskProvider(runner)),
 
     reg('c42check.run', () => runner.run('check')),
     reg('c42check.cancel', () => runner.cancel()),
     reg('c42check.refresh', () => tree.refresh()),
+    reg('c42check.syncPrototypes', () => proto.runCommand()),
     reg('c42check.showLog', (name?: string) => outputs.get(typeof name === 'string' ? name : 'main').show(true)),
     reg('c42check.runArgs', () => shellQuoteArgs(readSettings().runArgs)),
     reg('c42check.generateDebugConfig', () => generateDebugConfig()),

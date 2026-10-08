@@ -135,15 +135,18 @@ function firstFrameInRoot(
   return undefined;
 }
 
-const ASAN_FRAME = /^\s*#\d+ 0x[0-9a-f]+ in \S+ (.+?):(\d+)(?::(\d+))?\s*$/;
+// ASan/MSan: `#0 0x.. in fn file:12:5`  TSan: `#0 fn file:12:5 (prog+0x..) (BuildId: ..)`
+const ASAN_FRAME = /^\s*#\d+ (?:0x[0-9a-f]+ in )?\S+ (.+?):(\d+)(?::(\d+))?(?:\s+\(.*)?\s*$/;
 
-/** ASan / LSan の報告を Diag にする (最初に現れる root 内のフレームの位置に付ける)。 */
+/** ASan / LSan / TSan / MSan / UBSan の報告を Diag にする (最初に現れる root 内のフレームの位置に付ける)。 */
 export function parseSanitizer(text: string, root: string): Diag[] {
   const lines = text.split('\n').map((l) => l.replace(/\r$/, ''));
   const diags: Diag[] = [];
   const headers: { re: RegExp; label: (m: RegExpExecArray) => string }[] = [
     { re: /ERROR: AddressSanitizer: (.*)$/, label: (m) => `AddressSanitizer: ${m[1]}` },
     { re: /^((?:Direct|Indirect) leak of .*)$/, label: (m) => `LeakSanitizer: ${m[1]}` },
+    { re: /WARNING: ThreadSanitizer: (.*?)(?: \(pid=\d+\))?$/, label: (m) => `ThreadSanitizer: ${m[1]}` },
+    { re: /WARNING: MemorySanitizer: (.*)$/, label: (m) => `MemorySanitizer: ${m[1]}` },
   ];
   lines.forEach((line, i) => {
     for (const h of headers) {
@@ -151,7 +154,7 @@ export function parseSanitizer(text: string, root: string): Diag[] {
       if (!m) continue;
       const frame = firstFrameInRoot(lines, i + 1, root, ASAN_FRAME);
       if (frame) {
-        diags.push({ ...frame, severity: 'error', message: h.label(m), source: 'asan' });
+        diags.push({ ...frame, severity: 'error', message: h.label(m), source: 'sanitizer' });
       }
     }
   });

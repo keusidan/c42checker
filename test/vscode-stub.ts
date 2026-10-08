@@ -7,6 +7,7 @@ export const state = {
   config: {} as Record<string, unknown>,
   trusted: true,
   messages: [] as string[],
+  updates: [] as { key: string; value: unknown }[],
 };
 
 export class EventEmitter<T> {
@@ -58,7 +59,10 @@ export const workspace = {
   },
   getConfiguration: (section: string) => ({
     get: (key: string) => state.config[`${section}.${key}`],
-    update: async () => undefined,
+    update: async (key: string, value: unknown) => {
+      state.config[`${section}.${key}`] = value;
+      state.updates.push({ key: `${section}.${key}`, value });
+    },
   }),
 };
 
@@ -110,4 +114,35 @@ export class Task {
     public source: string,
     public execution: CustomExecution,
   ) {}
+}
+
+export const TreeItemCollapsibleState = { None: 0, Collapsed: 1, Expanded: 2 };
+export const TreeItemCheckboxState = { Unchecked: 0, Checked: 1 };
+export class TreeItem {
+  id?: string;
+  checkboxState?: number;
+  iconPath?: unknown;
+  description?: string;
+  tooltip?: unknown;
+  command?: { command: string; title: string };
+  constructor(
+    public label: string,
+    public collapsibleState: number,
+  ) {}
+}
+export class ThemeIcon {
+  constructor(
+    public id: string,
+    public color?: unknown,
+  ) {}
+}
+export class ThemeColor {
+  constructor(public id: string) {}
+}
+export class MarkdownString {
+  value = '';
+  appendMarkdown(t: string) {
+    this.value += t;
+    return this;
+  }
 }
