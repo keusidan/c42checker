@@ -32,20 +32,21 @@ VS Code 上でしか確認できない項目は私の環境では実行できて
 
 チェック内容の判定は版によって差が出うる (特に clang-tidy / gcc -fanalyzer の検出)。上記の校舎の実測で、`-12` 系でも想定どおりだったことは確認済み。
 
-## 自動テスト (79 件)
+## 自動テスト (94 件)
 
 ```sh
 # norminette が PATH に必要。無い場合は該当項目が skip になる
 npm test        # = node esbuild.mjs --test && node --test "out-test/*.test.js"
 ```
 
-結果: **79 件中 79 件 pass、0 fail、0 skip** (2026-10-07、上記の環境)。
+結果: **94 件中 94 件 pass、0 fail、0 skip** (2026-10-07、上記の環境)。
 
 - `test/parse.test.ts`: 出力の parser (gcc / clang / UBSan / norminette (ANSI カラー除去) / ASan / LSan / valgrind)
 - `test/pipeline.test.ts`: fail-fast の制御 (fake step で、段階 1 失敗 → 段階 2 非実行 / `failFast: "step"` / skip は失敗ではない / 空き容量不足 / `.42check/` 上限超過)
 - `test/compdb.test.ts`: `compile_commands.json` の生成 (files / make-n / clang-MJ / auto の 4 方式)、`mainFile` の include 切り替え、`.clangd` を他人のものは上書きしない
 - `test/integration.test.ts`: **実際のツール**で samples を検証 (下表)
 - `test/launch.test.ts`: launch.json / tasks.json の生成とマージ (既存項目は変更しない)
+- `test/formatter.test.ts`: c_formatter_42 (0.2.8)。norminette の前に実行される順序、norm 違反が減ること、退避、冪等性、**整形でコードが壊れたら元に戻して fail** (長い文字列リテラル / include の順序依存)、未保存ファイルの skip、ツール無しの skip、`.clang-format` に触れないこと、TSan / MSan の起動時 SEGV の判定
 - `test/proto.test.ts`: プロトタイプ同期。ctags の出力の整形 (純粋関数)、マーカー処理、**本物の universal-ctags 5.9.0** での抽出 → norm 形式で書き込み → **norminette 通過** → 生成したヘッダでプロジェクトがコンパイルできる、冪等性、マーカー無し・壊れ・結果が空・宣言に直せない関数・ctags 無し / Exuberant 版・未保存のヘッダでヘッダが変わらないこと、段階 0 での同期
 - `test/toggles.test.ts`: 「設定」グループ 5 項目の双方向同期 (settings → チェック / チェック → settings、failFast の "step" / "stage" 変換)、既定がすべて OFF、トグルの対応表と package.json の整合
 - `test/workdir.test.ts`: rclone マウントの判定、`.gitignore` への追記、`.42check/` の作り直しと安全装置、容量計測、scan-build 用コピー
@@ -154,4 +155,25 @@ CodeLLDB と clangd は別計測で、校舎の実機での実測は CodeLLDB 16
 - VS Code の画面上の動作: 差分プレビュー (`vscode.diff`) と承認ボタン、「元に戻す」、保存時の自動同期、View の「設定」グループのチェックボックス、「ヘッダ」グループのクリック。
   UI の制御フローは `vscode` を stub に差し替えたテストで検証したが、VS Code 本体では未実行
 - 保存時 / 実行時の同期で差分プレビューが出ないこと (承認を取れないため、意図した仕様)。マーカーがあるヘッダだけが対象
+
+## c_formatter_42 の確認状況 (本環境: c_formatter_42 0.2.8)
+
+確認できたこと (自動テスト):
+
+- `samples/norm-ng` (文字列を短くしたもの) を整形すると、`INVALID_HEADER` 以外の norm 違反がすべて直る。norm 準拠の `samples/ok` は、`#include` の並びだけが変わり、norminette と警告強化ビルドを通る
+- **80 桁を超える文字列リテラルでコードが壊れる** (1 回目でリテラルの途中に改行、2 回目でさらに崩れる) ことを実際に確認し、構文チェックで検出して元に戻す安全装置を入れた
+- c_formatter_42 は cwd の `.clang-format` を差し替える実装 (ソースを確認) なので、`.42check/format-cwd/` で実行し、ワークスペースの `.clang-format` を保護している
+- プロトタイプ同期のブロックと、c_formatter_42 は干渉しない
+
+**未確認**: 校舎での c_formatter_42 の導入 (pip / pipx が使えるか、home の容量)、VS Code 上での操作。
+
+## MSan / TSan が起動時に落ちる環境 (校舎の実機での報告)
+
+実機で「MSan が起動時に SIGSEGV で落ち、fail 扱いになる」「テストが 1 件失敗する」という報告があった (ユーザーが共有した別セッションの調査ログ。原因の特定までは含まれていない)。
+本環境では再現できていない。ログから原因は確認できていないため、次の**推測に基づく対応**を入れた:
+
+- 起動時に SEGV で落ち、(a) sanitizer の報告が無い、または (b) スタックがプロジェクトのコードを含まず sanitizer のランタイム内だけ、の場合は、環境の問題として **skip** にする (`isSanitizerStartupCrash`)
+- ユーザーのコードが落ちた場合 (スタックにプロジェクトのフレームがある) は、これまでどおり fail
+
+実機の MSan のログ (`.42check/` の出力、または失敗した項目の Output Channel) を確認できたら、この判定を実際の出力に合わせて見直す。
 

@@ -1,4 +1,5 @@
 export const STEP_IDS = [
+  'cFormatter', // norminette の前に走らせる整形 (ファイルを書き換える)
   'norminette',
   'warnings',
   'clangTidy',
@@ -69,6 +70,7 @@ export interface Settings {
 }
 
 export const DEFAULT_CHECKS: Record<StepId, boolean> = {
+  cFormatter: false, // ソースを書き換えるため既定は OFF
   norminette: true,
   warnings: true,
   clangTidy: true,
@@ -116,6 +118,7 @@ export interface Tools {
   framaC?: string;
   /** PATH 上の候補名。Universal Ctags かどうかは使う直前に --version で確認する */
   ctags?: string;
+  cFormatter?: string;
 }
 
 export interface RunIO {

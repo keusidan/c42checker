@@ -26,6 +26,8 @@ export interface StepDef {
   id: StepId;
   label: string;
   stage: Stage;
+  /** View のツールチップに出す補足 */
+  note?: string;
   /** 未インストールなど、実行できない理由があれば返す (skip 扱い) */
   prerequisite(ctx: Context): Skip | undefined;
   run(ctx: Context): Promise<StepOutcome>;
@@ -75,6 +77,109 @@ function verdict(code: number | null, diags: Diag[], output: string, extra?: { e
 }
 
 /* ───────────── 段階 1 ───────────── */
+
+/** c_formatter_42 が整形した結果。整形前の内容は format-backup/ に退避される。 */
+const cFormatter: StepDef = {
+  id: 'cFormatter',
+  label: 'c_formatter_42 (整形)',
+  stage: 1,
+  note: 'norminette の前に、.c / .h を **その場で書き換えて** 整形します (`#include` の並び替えも行います)。変更前の内容は .42check/format-backup/ に退避されます。',
+  prerequisite: (ctx) =>
+    first(needTool(ctx, 'cFormatter', 'c_formatter_42'), ctx.sources.length + ctx.headers.length === 0 ? NO_SOURCES : undefined),
+  async run(ctx) {
+    const bin = ctx.tools.cFormatter!;
+    const files = [...ctx.sources, ...ctx.headers];
+    // エディタに未保存の変更があるファイルは、ディスク上を書き換えると編集中の内容と食い違うので整形しない
+    const dirty = files.filter((f) => ctx.isFileDirty?.(f));
+    if (dirty.length > 0) {
+      return {
+        status: 'skip',
+        diags: [],
+        log: `未保存のファイル:\n${dirty.map((f) => `  ${path.relative(ctx.root, f)}`).join('\n')}\n`,
+        reason: `未保存の変更があるファイルが ${dirty.length} 件あるため、整形しませんでした`,
+        hint: '保存してから、もう一度実行してください',
+      };
+    }
+    const before = new Map(files.map((f) => [f, fs.readFileSync(f)]));
+    const rel = files.map((f) => path.relative(ctx.root, f));
+
+    // c_formatter_42 は、80 桁を超える文字列リテラルの途中で改行するなど、コードを壊すことがある。
+    // 整形の前に構文チェックが通っていたら、整形の後にも通ることを確かめ、通らなければ元に戻す。
+    const baseline = await syntaxCheck(ctx);
+    // c_formatter_42 は実行中、cwd の .clang-format を自分の設定へのシンボリックリンクに差し替え、終了時に元へ戻す。
+    // 強制終了 (タイムアウト / 中止) されてもユーザーの .clang-format を失わないよう、空のディレクトリを cwd にして絶対パスで渡す。
+    const cwd = path.join(ctx.workDir, 'format-cwd');
+    fs.mkdirSync(cwd, { recursive: true });
+    const r = await exec(bin, files, { cwd, timeoutMs: staticMs(ctx), signal: ctx.signal });
+    fs.rmSync(cwd, { recursive: true, force: true });
+
+    // 失敗や中断のときも、書き換わってしまったファイルは退避する
+    const changed = files.filter((f) => !before.get(f)!.equals(fs.readFileSync(f)));
+    const backup = path.join(ctx.workDir, 'format-backup');
+    for (const f of changed) {
+      const dest = path.join(backup, path.relative(ctx.root, f));
+      fs.mkdirSync(path.dirname(dest), { recursive: true });
+      fs.writeFileSync(dest, before.get(f)!);
+    }
+    const restoreAll = () => {
+      for (const f of changed) fs.writeFileSync(f, before.get(f)!);
+      fs.rmSync(backup, { recursive: true, force: true });
+    };
+    const list = (fs_: string[]) => fs_.map((f) => `  ${path.relative(ctx.root, f)}`).join('\n');
+    let log = cmdline(bin, rel) + r.output.split(ctx.root + path.sep).join('');
+
+    if (r.timedOut) {
+      restoreAll();
+      return { status: 'fail', diags: [], log, reason: '制限時間 (c42check.staticTimeoutSec) を超えました。整形は取り消しました' };
+    }
+    if (r.error || r.code !== 0) {
+      restoreAll();
+      return {
+        status: 'fail',
+        diags: [],
+        log,
+        reason: r.error ?? `c_formatter_42 が終了コード ${r.code} で終了しました。整形は取り消しました`,
+      };
+    }
+    if (changed.length > 0 && baseline.checked && baseline.ok) {
+      const after = await syntaxCheck(ctx);
+      if (after.checked && !after.ok) {
+        restoreAll();
+        log += `整形後にコンパイルが通らなくなったため、変更した ${changed.length} 件を元に戻しました:\n${list(changed)}\n${after.output}`;
+        return {
+          status: 'fail',
+          diags: after.diags,
+          log,
+          reason: `c_formatter_42 の整形でコードが壊れたため、元に戻しました (${changed.map((f) => path.basename(f)).join(', ')})`,
+          hint: '80 桁を超える文字列リテラルは、c_formatter_42 が途中で改行して壊すことがあります。リテラルを手で分割する (隣り合う "..." "...") など、先に直してください。#include の並び順に依存したヘッダも壊れます',
+        };
+      }
+    }
+    log += changed.length
+      ? `整形で変更したファイル ${changed.length} 件 (変更前は .42check/format-backup/ に退避):\n${list(changed)}\n`
+      : '整形による変更はありません\n';
+    if (!(baseline.checked && baseline.ok)) log += '(clang が無い、または整形前から構文エラーがあるため、整形後の構文チェックは行っていません)\n';
+    return {
+      status: 'pass',
+      diags: [],
+      log,
+      reason: changed.length ? `${changed.length} ファイルを整形しました` : undefined,
+    };
+  },
+};
+
+/** 構文・型のチェックだけ (-fsyntax-only)。clang が無い / 対象が無い場合は checked: false。 */
+async function syntaxCheck(ctx: Context): Promise<{ checked: boolean; ok: boolean; output: string; diags: Diag[] }> {
+  const cc = ctx.tools.cc;
+  if (!cc || ctx.sources.length === 0) return { checked: false, ok: false, output: '', diags: [] };
+  const r = await exec(cc, ['-fsyntax-only', ...incFlags(ctx), ...ctx.sources], {
+    cwd: ctx.root,
+    timeoutMs: staticMs(ctx),
+    signal: ctx.signal,
+  });
+  const diags = parseCompilerOutput(r.output, ctx.root, 'clang');
+  return { checked: true, ok: r.code === 0 && !r.error, output: r.output, diags };
+}
 
 const norminette: StepDef = {
   id: 'norminette',
@@ -224,6 +329,23 @@ interface SanitizerSpec {
   timeoutFactor: number;
   /** LeakSanitizer を使う (ptrace 制限環境では detect_leaks=0 で再実行する) */
   leaks?: boolean;
+  /** 起動直後の SEGV で、プロジェクトのコードに原因が見つからないものを、環境の問題として skip にする (TSan / MSan) */
+  startupCrashIsEnv?: boolean;
+}
+
+/**
+ * sanitizer 付きのプログラムが、ユーザーのコードとは無関係に起動時に落ちたか。
+ * - 報告も出さずに SEGV で終わった、または
+ * - SEGV の報告があるが、スタックにプロジェクトのフレームが無く、sanitizer のランタイム内 (`__msan_init` など) で落ちている
+ * TSan / MSan がカーネルの ASLR 設定などと合わない環境で起きる。ユーザーのコードが落ちた場合は、スタックにそのフレームが出る。
+ */
+export function isSanitizerStartupCrash(output: string, signal: string | null, hasProjectFrame: boolean): boolean {
+  if (hasProjectFrame) return false;
+  const segv = signal === 'SIGSEGV' || /DEADLYSIGNAL|SEGV on unknown address/.test(output);
+  if (!segv) return false;
+  const silent = !/Sanitizer/.test(output);
+  const inRuntime = /__(?:msan|tsan)_init|\b(?:msan|tsan|__sanitizer|__tsan|__msan)::|libclang_rt\.(?:msan|tsan)/.test(output);
+  return silent || inRuntime;
 }
 
 // sanitizer のランタイム (libclang_rt.*) が無い / このツールチェーンが未対応のとき。ユーザーのコードの問題ではない
@@ -277,6 +399,16 @@ function sanitizerStep(spec: SanitizerSpec): StepDef {
           hint: 'カーネルの vm.mmap_rnd_bits が大きいと起動できないことがあります (`sudo sysctl vm.mmap_rnd_bits=28` で回避できる場合がありますが、sudo の無い校舎では不可)。その場合はこの項目のチェックを外してください',
         };
       }
+      const diags = parseSanitizer(r.output, ctx.root);
+      if (spec.startupCrashIsEnv && isSanitizerStartupCrash(r.output, r.signal, diags.length > 0)) {
+        return {
+          status: 'skip',
+          diags: [],
+          log,
+          reason: `${spec.label} 付きのプログラムが、起動時に落ちました (プロジェクトのコードには原因が見つからず、この環境では使えない可能性が高い)`,
+          hint: 'カーネルの ASLR 設定 (vm.mmap_rnd_bits) や clang の版との組み合わせで起きることがあります。ログの先頭を確認し、校舎などで使えない場合はこの項目のチェックを外してください',
+        };
+      }
       if (r.timedOut) {
         return {
           status: 'skip',
@@ -286,7 +418,6 @@ function sanitizerStep(spec: SanitizerSpec): StepDef {
           hint: '`c42check.runTimeoutSec` を延ばす、`c42check.runArgs` で終了する引数を渡す、または GUI / 無限ループの課題ならこの項目のチェックを外してください',
         };
       }
-      const diags = parseSanitizer(r.output, ctx.root);
       const reported = spec.reported.test(r.output);
       const crashed = r.signal !== null;
       const failed = reported || crashed || !!r.error;
@@ -321,6 +452,7 @@ const tsan = sanitizerStep({
   env: () => ({ TSAN_OPTIONS: 'color=never' }),
   reported: /WARNING: ThreadSanitizer/,
   timeoutFactor: 3,
+  startupCrashIsEnv: true,
 });
 
 const msan = sanitizerStep({
@@ -332,6 +464,7 @@ const msan = sanitizerStep({
   env: () => ({ MSAN_OPTIONS: 'color=never' }),
   reported: /WARNING: MemorySanitizer/,
   timeoutFactor: 3,
+  startupCrashIsEnv: true,
 });
 
 const valgrind: StepDef = {
@@ -418,7 +551,7 @@ const framaC: StepDef = {
 };
 
 /** 実行順 (段階 1 → 段階 2、段階内は宣言順)。 */
-export const STEPS: StepDef[] = [norminette, warnings, clangTidy, scanBuild, gccAnalyzer, asanUbsan, tsan, msan, valgrind, cbmc, framaC];
+export const STEPS: StepDef[] = [cFormatter, norminette, warnings, clangTidy, scanBuild, gccAnalyzer, asanUbsan, tsan, msan, valgrind, cbmc, framaC];
 
 export function stepById(id: StepId): StepDef {
   const s = STEPS.find((x) => x.id === id);

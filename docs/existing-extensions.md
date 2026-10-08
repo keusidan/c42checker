@@ -12,6 +12,7 @@
 | チェックボックス UI、結果の集約、Problems / Output への出力 | 自作 | 同上 |
 | launch.json / tasks.json の生成とマージ案の提示 | 自作 | 同上 |
 | norminette / clang / clang-tidy / scan-build / gcc / valgrind の実行 | 各ツールの CLI を呼ぶ | ツール自体は校舎に入っているものを使う |
+| `.c` / `.h` の整形 (norminette の前) | c_formatter_42 (PyPI の `c-formatter-42`。CLI。VS Code 拡張ではない) | 自作しない。実行して結果を検証するだけ。clang-format は同梱 (約 9.7MB)。**コードを壊すことがあるため**、整形前後に構文チェックを行い、壊れたら元に戻す。ライセンスと保守状況は、拡張ではないため上の信頼性の基準による確認は行っていない (**未確認**。版 0.2.8 で動作確認) |
 | `.c` の関数定義の抽出 (プロトタイプ同期) | universal-ctags (CLI。VS Code 拡張ではない) | C のパーサは自作しない。ctags が返した型・引数を 42 Norm の形式に整形するだけ (自作)。ctags が無い環境では skip。ctags のライセンスと保守状況は、拡張ではないため上の信頼性の基準による確認は行っていない (**未確認**) |
 
 ## 採用した既存拡張機能

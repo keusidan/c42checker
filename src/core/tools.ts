@@ -15,6 +15,8 @@ export const CANDIDATES: Record<keyof Tools, string[]> = {
   framaC: ['frama-c'],
   // Ubuntu は ctags-universal (ctags は alternatives)。素の ctags は Exuberant / GNU 版のことがあるので最後
   ctags: ['universal-ctags', 'ctags-universal', 'ctags'],
+  // PyPI の c-formatter-42 が入れるコマンド名は c_formatter_42
+  cFormatter: ['c_formatter_42', 'c-formatter-42'],
 };
 
 export function findOnPath(name: string, envPath = process.env.PATH ?? ''): string | undefined {
@@ -66,6 +68,7 @@ export function detectTools(envPath = process.env.PATH ?? ''): Tools {
 
 /** 各ステップが必要とするツール (View で未検出を表示するため) */
 export const STEP_TOOL: Record<StepId, keyof Tools> = {
+  cFormatter: 'cFormatter',
   norminette: 'norminette',
   warnings: 'cc',
   clangTidy: 'tidy',
@@ -91,4 +94,5 @@ export const INSTALL_HINTS: Record<keyof Tools, string> = {
   cbmc: 'cbmc が PATH にありません。ネイティブ版のみ対応です (校舎では Docker image を pull しない方針)',
   framaC: 'frama-c が PATH にありません。ネイティブ版のみ対応です (校舎では Docker image を pull しない方針)',
   ctags: 'universal-ctags (ctags-universal) が PATH にありません。Arch: `sudo pacman -S ctags` / Ubuntu: `sudo apt install universal-ctags`。プロトタイプ同期のみで使います',
+  cFormatter: 'c_formatter_42 が PATH にありません。`pipx install c-formatter-42` (または `pip install --user c-formatter-42`) で入ります。自分の機の norminette と同じように、校舎の home に入れる場合は容量に注意してください',
 };

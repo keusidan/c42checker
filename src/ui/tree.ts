@@ -100,6 +100,7 @@ export class CheckTree implements vscode.TreeDataProvider<Node>, vscode.Disposab
           : STATUS_TEXT[status];
     const tip = new vscode.MarkdownString();
     tip.appendMarkdown(`**${step.label}** (段階 ${step.stage})`);
+    if (step.note) tip.appendMarkdown(`\n\n${step.note}`);
     if (missing) tip.appendMarkdown(`\n\n未検出: ${INSTALL_HINTS[toolKey]}`);
     if (result?.reason) tip.appendMarkdown(`\n\n${result.reason}`);
     if (result?.hint) tip.appendMarkdown(`\n\n対処案: ${result.hint}`);

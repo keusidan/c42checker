@@ -293,6 +293,7 @@
         "c42check.checks": {
           "type": "object",
           "default": {
+            "cFormatter": false,
             "norminette": true,
             "warnings": true,
             "clangTidy": true,
@@ -305,7 +306,7 @@
             "cbmc": false,
             "framaC": false
           },
-          "description": "チェックボックスの状態 (View から変更すると自動で保存されます)。TSan / MSan は既定で OFF。複数選ぶと、項目ごとに別ビルドで順に実行されます。",
+          "description": "チェックボックスの状態 (View から変更すると自動で保存されます)。cFormatter (c_formatter_42) はソースを書き換えるため、TSan / MSan と同じく既定で OFF。複数の sanitizer を選ぶと、項目ごとに別ビルドで順に実行されます。",
           "additionalProperties": {
             "type": "boolean"
           }

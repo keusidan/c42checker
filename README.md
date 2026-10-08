@@ -18,7 +18,7 @@ F5 で CodeLLDB のデバッガを起動でき、**事前チェックに落ち�
 | 段階 | 内容 |
 |---|---|
 | 0 準備 | 空き容量の確認 → `.42check/` の作り直し → ツール検出 → `compile_commands.json` / `.clangd` の生成 |
-| 1 事前チェック (静的) | norminette / 警告強化ビルド (`-Wall -Wextra -Werror -Wshadow -Wconversion`) / clang-tidy (`clang-analyzer-*,bugprone-*`) / scan-build / `gcc -fanalyzer` |
+| 1 事前チェック (静的) | (任意) c_formatter_42 による整形 → norminette / 警告強化ビルド (`-Wall -Wextra -Werror -Wshadow -Wconversion`) / clang-tidy (`clang-analyzer-*,bugprone-*`) / scan-build / `gcc -fanalyzer` |
 | 2 動的チェック | ASan(AddressSanitizer) + UBSan(UndefinedBehaviorSanitizer) / TSan(ThreadSanitizer) / MSan(MemorySanitizer) / valgrind を、**項目ごとに別ビルド**で実行。任意で CBMC / Frama-C Eva (ネイティブにある場合のみ) |
 | 3 デバッガ | F5 経由のときのみ。デバッグ用ビルド (`.42check/debug/prog`) の後、CodeLLDB が起動 |
 
@@ -41,6 +41,23 @@ F5 で CodeLLDB のデバッガを起動でき、**事前チェックに落ち�
 
 プログラムが正常に `exit(1)` するだけでは、ASan / valgrind 側では失敗にしません (sanitizer / valgrind の報告があるかで判定)。
 
+### c_formatter_42 による整形 (norminette の前)
+
+段階 1 の**先頭** (norminette の前) に、`c_formatter_42` でソースを整形する項目があります。View の段階 1 の「c_formatter_42 (整形)」にチェックを入れると、
+norminette の前に `.c` / `.h` を整形します (整形後のファイルを norminette が検査します)。
+
+- **ソースをその場で書き換えます。そのため既定は OFF です。** `mainFile` (テスト用の main) は対象外です。
+- 入れ方: `pipx install c-formatter-42` (または `pip install --user c-formatter-42`)。clang-format は c_formatter_42 に同梱なので、別に要りません。
+  未導入なら、失敗ではなく skip + 対処案になります。動作確認は c_formatter_42 0.2.8 で行いました。
+- 変更前の内容は `.42check/format-backup/` に退避します (次の実行で消えます。git で管理していれば `git diff` / `git checkout` でも戻せます)。
+- エディタに**未保存の変更があるファイル**があれば、何も書き換えずに skip します。
+- **整形でコードが壊れたら、変更したファイルをすべて元に戻して fail にします。** 整形の前にコンパイル (構文チェック) が通っていたのに、整形の後に通らなくなったときが対象です。
+  実際に、次の 2 つで壊れることを確認しています。
+  - **80 桁を超える文字列リテラル**: 1 回目の整形がリテラルの途中で改行してしまい、2 回目でさらに崩れます (`%zu` が `% zu` になる)。リテラルを `"..." "..."` のように手で分割してから使ってください。
+  - **`#include` の順序に依存したコード**: c_formatter_42 は `#include` を並び替えます (`"..."` を `<...>` より前に)。ヘッダが自分で必要な `#include` を持たない場合、並び替えでコンパイルできなくなります。
+- ワークスペース直下の `.clang-format` には触れません (c_formatter_42 は cwd の `.clang-format` を一時的に差し替えるため、`.42check/` 内の空のディレクトリで実行します)。
+- 「ヘッダにプロトタイプを反映」が書いたブロックとは干渉しません (同期 → 整形 → 同期で、ブロックは変わらないことを確認済み)。
+
 ### sanitizer の選択 (ASan+UBSan / TSan / MSan)
 
 sanitizer は互いに併用できないため、View の段階 2 に**別々のチェックボックス**として並んでいます (既定は ASan+UBSan が ON、TSan と MSan は OFF)。
@@ -50,6 +67,7 @@ sanitizer は互いに併用できないため、View の段階 2 に**別々の
 - MSan は、プログラムが使うコードのすべてが instrument されている必要があり、そうでないと誤検出することがあります (libc は主な関数を interceptor が補います)。
   MSan の誤検出が疑わしいときは、valgrind の結果と照らして判断してください。出典: [MemorySanitizer — Clang docs (版つきの複製)](https://releases.llvm.org/3.6.2/tools/docs/MemorySanitizer.html)
 - sanitizer のランタイム (Ubuntu: `libclang-rt-<版>-dev`) が無い、または TSan / MSan がカーネルの ASLR 設定で起動できない環境では、**失敗ではなく skip + 理由 + 対処案**になります。
+  TSan / MSan 付きのプログラムが、**プロジェクトのコードとは無関係に起動時に SEGV で落ちた**場合 (報告が無い、またはスタックが sanitizer のランタイム内だけ) も、環境の問題として skip にします。ユーザーのコードが落ちた場合はスタックにそのフレームが出るので、fail のままです。
   後者は `sudo sysctl vm.mmap_rnd_bits=28` で回避できることがありますが、sudo の無い校舎では使えません。出典: [PX4 docs: Sanitizers](https://docs.px4.io/main/en/test_and_ci/sanitizers)、[ziggit: ThreadSanitizer: unexpected memory mapping error](https://ziggit.dev/t/threadsanitizer-unexpected-memory-mapping-error/4930)
 
 ## インストール
@@ -64,7 +82,7 @@ sanitizer は互いに併用できないため、View の段階 2 に**別々の
 git clone https://github.com/keusidan/c42checker.git
 cd c42checker
 npm ci
-npm run package                      # c42checker-0.1.0.vsix ができる (約 39KB)
+npm run package                      # c42checker-0.1.0.vsix ができる (約 41KB)
 
 # 校舎 (sudo 不要。.vsix を Drive などで持ってくる):
 code --install-extension c42checker-0.1.0.vsix
@@ -216,7 +234,7 @@ Node.js 22 以上が必要です (`.nvmrc`、`package.json` の `engines`)。
 npm ci
 npm run typecheck   # tsc --noEmit
 npm run build       # esbuild で dist/extension.js に bundle
-npm test            # 79 件。実際のツール (norminette / clang / valgrind など) があれば使い、無ければ該当項目は skip
+npm test            # 94 件。実際のツール (norminette / clang / valgrind など) があれば使い、無ければ該当項目は skip
 npm run package     # .vsix を作る
 ```
 

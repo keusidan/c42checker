@@ -5,10 +5,11 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { test } from 'node:test';
 import { runPipeline } from '../src/core/pipeline';
-import { STEP_IDS, type Context, type StepId, type Tools } from '../src/core/types';
+import { DEFAULT_CHECKS, STEP_IDS, type Context, type StepId, type Tools } from '../src/core/types';
 import { sampleContext } from './helpers';
 
-const DEFAULT_ON = STEP_IDS.filter((id) => id !== 'cbmc' && id !== 'framaC') as StepId[];
+// 既定で ON の項目 (c_formatter_42 / TSan / MSan / CBMC / Frama-C は既定 OFF)
+const DEFAULT_ON = STEP_IDS.filter((id) => DEFAULT_CHECKS[id]) as StepId[];
 
 const status = (r: Awaited<ReturnType<typeof runPipeline>>, id: string) => r.results.find((x) => x.id === id)?.status;
 const need = (ctx: Context, key: keyof Tools) => ctx.tools[key] !== undefined;

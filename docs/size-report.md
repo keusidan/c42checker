@@ -15,8 +15,8 @@
 | 開発用 `node_modules` (devDependencies のみ。121 packages) | **144MB** | `du -sh node_modules` |
 | `.git` | 約 0.2MB | `du -sh .git` |
 | ビルド成果物: bundle 後の `dist/` (`extension.js` は production ビルドで約 75KB。残りは開発ビルドの sourcemap 約 155KB で `.vsix` には入らない) | 212KB | `du -sh dist` |
-| ビルド成果物: `.vsix` | 39KB (7 ファイル) | `ls -la c42checker-0.1.0.vsix` |
-| インストール後の `~/.vscode/extensions/keusidan.c42checker-0.1.0/` (`.vsix` の展開サイズ) | 約 115KB | `.vsix` 内の全ファイルの非圧縮サイズの合計 (117,411 bytes) |
+| ビルド成果物: `.vsix` | 41KB (7 ファイル) | `ls -la c42checker-0.1.0.vsix` |
+| インストール後の `~/.vscode/extensions/keusidan.c42checker-0.1.0/` (`.vsix` の展開サイズ) | 約 123KB | `.vsix` 内の全ファイルの非圧縮サイズの合計 (126,387 bytes) |
 | 検証時の `.42check/` (正常サンプルで全段階 + デバッグ用ビルドまで実行した後) | 約 1.7MB (`ok`: 1,713,994 bytes / `lib-ok`: 1,701,718 bytes) | `dirSize()` (再帰合計) |
 | **合計 (上記の最大構成: ワークスペース 145MB + `.vsix` 展開 + `.42check/`)** | **約 147MB** | 500MB 以内 ✅ |
 
