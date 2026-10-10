@@ -1,0 +1,532 @@
+{
+  "name": "c42checker",
+  "displayName": "42 Check",
+  "description": "42 Tokyo (C / 42 Norm) 向けの検証ツール一式を、段階的に fail-fast で実行し、F5 (CodeLLDB) と連携する司令塔",
+  "version": "0.1.0",
+  "publisher": "keusidan",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/keusidan/c42checker"
+  },
+  "engines": {
+    "vscode": "^1.85.0",
+    "node": ">=22"
+  },
+  "categories": [
+    "Linters",
+    "Debuggers",
+    "Other"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onStartupFinished",
+    "workspaceContains:**/*.c"
+  ],
+  "extensionDependencies": [
+    "vadimcn.vscode-lldb"
+  ],
+  "extensionPack": [
+    "llvm-vs-code-extensions.vscode-clangd"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "Makefile の評価 (make -n) や、検証対象プログラムの実行を行うため、信頼済みのワークスペースでのみ動作します。"
+    }
+  },
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "c42check",
+          "title": "42 Check",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "c42check": [
+        {
+          "id": "c42check.view",
+          "name": "検証ツール"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "c42check.run",
+        "title": "実行 (チェック済みの項目)",
+        "category": "42 Check",
+        "icon": "$(play)"
+      },
+      {
+        "command": "c42check.syncPrototypes",
+        "title": "ヘッダにプロトタイプを反映",
+        "category": "42 Check",
+        "icon": "$(symbol-method)"
+      },
+      {
+        "command": "c42check.cancel",
+        "title": "実行を中止",
+        "category": "42 Check",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "c42check.refresh",
+        "title": "ツールを再検出",
+        "category": "42 Check",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "c42check.regenerateCompdb",
+        "title": "compile_commands.json / .clangd を再生成",
+        "category": "42 Check"
+      },
+      {
+        "command": "c42check.generateDebugConfig",
+        "title": "launch.json / tasks.json を生成・更新",
+        "category": "42 Check"
+      },
+      {
+        "command": "c42check.proposeAbortOnTaskErrors",
+        "title": "debug.onTaskErrors を abort にする (確認あり)",
+        "category": "42 Check"
+      },
+      {
+        "command": "c42check.cleanWorkDir",
+        "title": ".42check/ を削除",
+        "category": "42 Check"
+      },
+      {
+        "command": "c42check.showLog",
+        "title": "ログを表示",
+        "category": "42 Check"
+      },
+      {
+        "command": "c42check.runArgs",
+        "title": "実行引数を返す (launch.json 用)",
+        "category": "42 Check"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "c42check.run",
+          "when": "view == c42check.view && !c42check.running",
+          "group": "navigation@1"
+        },
+        {
+          "command": "c42check.cancel",
+          "when": "view == c42check.view && c42check.running",
+          "group": "navigation@1"
+        },
+        {
+          "command": "c42check.refresh",
+          "when": "view == c42check.view",
+          "group": "navigation@2"
+        },
+        {
+          "command": "c42check.regenerateCompdb",
+          "when": "view == c42check.view",
+          "group": "1_tools@1"
+        },
+        {
+          "command": "c42check.generateDebugConfig",
+          "when": "view == c42check.view",
+          "group": "1_tools@2"
+        },
+        {
+          "command": "c42check.cleanWorkDir",
+          "when": "view == c42check.view",
+          "group": "1_tools@3"
+        },
+        {
+          "command": "c42check.syncPrototypes",
+          "when": "view == c42check.view",
+          "group": "1_tools@0"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "c42check.runArgs",
+          "when": "false"
+        },
+        {
+          "command": "c42check.showLog",
+          "when": "false"
+        }
+      ]
+    },
+    "taskDefinitions": [
+      {
+        "type": "c42check",
+        "required": [
+          "mode"
+        ],
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "check",
+              "pre-debug",
+              "build-debug"
+            ],
+            "description": "check: 段階 0〜2 / pre-debug: 段階 0〜2 + デバッグ用ビルド / build-debug: デバッグ用ビルドのみ (事前チェックを飛ばす)"
+          }
+        }
+      }
+    ],
+    "configuration": {
+      "title": "42 Check",
+      "properties": {
+        "c42check.targetDir": {
+          "type": "string",
+          "default": ".",
+          "description": "検証対象のディレクトリ (ワークスペースルートからの相対パス)。.c / .h をここから再帰的に探します。"
+        },
+        "c42check.includePaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "追加の include path (ワークスペースルートからの相対パス)。.h を含むディレクトリは自動で追加されます。"
+        },
+        "c42check.runArgs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "動的チェック (ASan / valgrind) とデバッグ実行に渡す引数。"
+        },
+        "c42check.useMakeCheckTarget": {
+          "type": "boolean",
+          "default": false,
+          "description": "true かつ Makefile に check ターゲットがある場合、scan-build は `make` ではなく `make check` を包んで実行します。"
+        },
+        "c42check.failFast": {
+          "type": "string",
+          "enum": [
+            "stage",
+            "step"
+          ],
+          "default": "stage",
+          "enumDescriptions": [
+            "同じ段階の全項目を実行してから止める (既定)",
+            "最初に失敗した項目で止める"
+          ],
+          "description": "fail-fast の粒度。"
+        },
+        "c42check.minFreeSpaceMB": {
+          "type": "number",
+          "default": 200,
+          "minimum": 0,
+          "description": "実行前に確認する、ワークスペースがあるファイルシステムの空き容量の下限 (MB)。下回ると警告して中断します。"
+        },
+        "c42check.workDirMaxMB": {
+          "type": "number",
+          "default": 100,
+          "minimum": 1,
+          "description": ".42check/ の上限サイズ (MB)。超えると警告して中断します。"
+        },
+        "c42check.runTimeoutSec": {
+          "type": "number",
+          "default": 10,
+          "minimum": 1,
+          "description": "動的チェックで対象プログラムを実行する制限時間 (秒)。valgrind は 5 倍まで許容します。超過した場合は skip 扱いになります。"
+        },
+        "c42check.staticTimeoutSec": {
+          "type": "number",
+          "default": 120,
+          "minimum": 1,
+          "description": "静的チェックの各ツールの制限時間 (秒)。"
+        },
+        "c42check.mainFile": {
+          "type": "string",
+          "default": "",
+          "description": "main を持たない課題 (libft など) 用のテスト main (.c) のパス。空なら指定なし。対象ソースに main が無い場合のみ、動的チェックとデバッグ用ビルドに追加されます。"
+        },
+        "c42check.compdb.includeMain": {
+          "type": "boolean",
+          "default": true,
+          "description": "mainFile を compile_commands.json に含めるか (clangd がテスト main も解析できるようになります)。"
+        },
+        "c42check.compdb.source": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "files",
+            "make-n",
+            "clang-MJ"
+          ],
+          "default": "auto",
+          "enumDescriptions": [
+            "Makefile があれば make -n を解析し、失敗したら files に戻る",
+            "ソース一覧 + 既定のフラグから直接生成",
+            "make -n -B の出力を解析 (Makefile の実際のフラグを反映)",
+            "clang -MJ で各ファイルの断片を作って結合"
+          ],
+          "description": "compile_commands.json の生成方式。"
+        },
+        "c42check.debug.sanitizer": {
+          "type": "boolean",
+          "default": false,
+          "description": "デバッグ用ビルドに ASan + UBSan を付けるか。"
+        },
+        "c42check.debug.cwd": {
+          "type": "string",
+          "default": "${workspaceFolder}",
+          "description": "launch.json の cwd (生成時に反映)。"
+        },
+        "c42check.debug.terminal": {
+          "type": "string",
+          "enum": [
+            "integrated",
+            "external",
+            "console"
+          ],
+          "default": "integrated",
+          "description": "launch.json の terminal (生成時に反映)。"
+        },
+        "c42check.checks": {
+          "type": "object",
+          "default": {
+            "cFormatter": false,
+            "norminette": true,
+            "warnings": true,
+            "clangTidy": true,
+            "scanBuild": true,
+            "gccAnalyzer": true,
+            "asanUbsan": true,
+            "tsan": false,
+            "msan": false,
+            "valgrind": true,
+            "cbmc": false,
+            "framaC": false
+          },
+          "description": "チェックボックスの状態 (View から変更すると自動で保存されます)。cFormatter (c_formatter_42) はソースを書き換えるため、TSan / MSan と同じく既定で OFF。複数の sanitizer を選ぶと、項目ごとに別ビルドで順に実行されます。",
+          "additionalProperties": {
+            "type": "boolean"
+          }
+        },
+        "c42check.proto.header": {
+          "type": "string",
+          "default": "",
+          "description": "プロトタイプを反映するヘッダ (ワークスペースルートからの相対パス)。空なら、マーカーのあるヘッダを自動で選びます (複数あれば選択を求めます)。"
+        },
+        "c42check.proto.sourceDir": {
+          "type": "string",
+          "default": "",
+          "description": "関数定義を抽出する .c のディレクトリ (ワークスペースルートからの相対パス。再帰的に探します)。空なら c42check.targetDir を使います。static 関数と main は除外されます。"
+        },
+        "c42check.proto.syncOnRun": {
+          "type": "boolean",
+          "default": false,
+          "description": "実行時 (段階 0) にプロトタイプを同期します。差分プレビューは出ません。マーカーが無いヘッダには何もしません。結果が空・ctags の失敗は、ヘッダに触らずエラーとして実行を止めます。"
+        },
+        "c42check.proto.syncOnSave": {
+          "type": "boolean",
+          "default": false,
+          "description": ".c の保存時にプロトタイプを同期します。差分プレビューは出ません。マーカーが無いヘッダには何もしません。"
+        },
+        "c42check.compile.cflags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "**全てのコンパイル**に追加する引数。clang / gcc / clang-tidy の呼び出しと `compile_commands.json` (clangd) に入る。\n\n例: `[\"-DDEBUG\", \"-std=gnu11\", \"-I${workspaceFolder}/extra\"]`\n\n各要素は shell 風に分割される (`\"-DA -DB\"` は 2 つ。空白を含むパスは `'...'` で囲む)。`${workspaceFolder}` が使える。Makefile を使う項目 (scan-build) は Makefile 自身のフラグで動く。",
+          "examples": [
+            [
+              "-DDEBUG",
+              "-std=gnu11"
+            ]
+          ]
+        },
+        "c42check.compile.ldflags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "**リンクする全てのビルド** (ASan / TSan / MSan / valgrind 用とデバッグ用) の、入力ファイルの**前**に追加する引数。\n\n例: `[\"-L/usr/local/lib\", \"-Wl,-rpath,/usr/local/lib\"]`",
+          "examples": [
+            [
+              "-L/usr/local/lib"
+            ]
+          ]
+        },
+        "c42check.compile.libs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "**リンクする全てのビルド**の、入力ファイルの**後ろ**に追加するライブラリ。\n\n例: `[\"-lbsd\", \"-lm\", \"-lreadline\"]`\n\n`-l` は入力ファイルより後ろに置かないと、GNU ld が参照を解決できないことがあるため、`ldflags` とは別にしてある。",
+          "examples": [
+            [
+              "-lbsd",
+              "-lm"
+            ]
+          ]
+        },
+        "c42check.compile.warningFlags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "-Wall",
+            "-Wextra",
+            "-Werror",
+            "-Wshadow",
+            "-Wconversion"
+          ],
+          "markdownDescription": "段階 1 の**警告強化ビルド**に使う警告フラグ (既定値を置き換える)。例えば `-Wconversion` を外したいときは、それを除いた配列にする。"
+        },
+        "c42check.clangTidy.checks": {
+          "type": "string",
+          "default": "clang-analyzer-*,bugprone-*",
+          "markdownDescription": "clang-tidy の `-checks=` に渡す値 (既定値を置き換える)。例: `clang-analyzer-*,bugprone-*,-bugprone-easily-swappable-parameters`"
+        },
+        "c42check.valgrind.args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "--leak-check=full",
+            "--show-leak-kinds=all",
+            "--track-fds=yes"
+          ],
+          "markdownDescription": "valgrind に渡すオプション (既定値を置き換える)。判定に必要な `--error-exitcode` と `--fullpath-after` は、設定に関わらず常に付く。"
+        },
+        "c42check.compile.perStep": {
+          "type": "object",
+          "additionalProperties": false,
+          "markdownDescription": "**項目ごと**に、その項目のツールにだけ追加する引数。キーは `c42check.checks` と同じ項目名。\n\n- `warnings` / `gccAnalyzer` / `asanUbsan` / `tsan` / `msan`: **コンパイラへの引数**\n- `clangTidy`: **clang-tidy 自身のオプション** (コンパイラへの引数は `compile.cflags`)\n- `scanBuild`: **scan-build のオプション** (例: `-enable-checker`)\n- `valgrind`: **valgrind のオプション** (例: `--suppressions=...`)\n- `norminette` / `cFormatter` / `cbmc` / `framaC`: 各コマンドの引数\n\n例: `{ \"warnings\": [\"-Wno-unused-parameter\"], \"valgrind\": [\"--suppressions=${workspaceFolder}/readline.supp\"] }`",
+          "properties": {
+            "cFormatter": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "markdownDescription": "c_formatter_42 への引数"
+            },
+            "norminette": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "markdownDescription": "norminette への引数 (ファイル名の前に入る)"
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "markdownDescription": "警告強化ビルドの clang への引数"
+            },
+            "clangTidy": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "markdownDescription": "clang-tidy 自身のオプション (`--` より前)"
+            },
+            "scanBuild": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "markdownDescription": "scan-build のオプション"
+            },
+            "gccAnalyzer": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "markdownDescription": "gcc -fanalyzer への引数"
+            },
+            "asanUbsan": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "markdownDescription": "ASan + UBSan ビルドの clang への引数"
+            },
+            "tsan": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "markdownDescription": "TSan ビルドの clang への引数"
+            },
+            "msan": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "markdownDescription": "MSan ビルドの clang への引数"
+            },
+            "valgrind": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "markdownDescription": "valgrind のオプション"
+            },
+            "cbmc": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "markdownDescription": "cbmc への引数"
+            },
+            "framaC": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "markdownDescription": "frama-c への引数"
+            }
+          },
+          "default": {}
+        },
+        "c42check.normExclude": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "main.c"
+          ],
+          "markdownDescription": "**norminette と c_formatter_42 の対象から外す**ファイル。他のチェック (警告強化ビルド、clang-tidy、sanitizer など) は、除外したファイルにも行われる。\n\n- `/` を含まないパターンは**ファイル名**に一致する (どの深さでも): `main.c` は `src/main.c` にも一致\n- `/` を含むパターンは、ワークスペースルートからの**相対パス**に一致する: `/main.c` は直下の main.c だけ\n- `/` で終わるパターンは、そのディレクトリ以下の全て: `tests/`\n- `*` は `/` 以外の任意の文字列、`**` は `/` も含む任意の文字列\n\n例: `[\"main.c\", \"tests/\", \"*_test.c\"]`。空にすると、全ての .c / .h が対象になる。",
+          "examples": [
+            [
+              "main.c",
+              "tests/"
+            ]
+          ]
+        }
+      }
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "test": "node esbuild.mjs --test && node --test \"out-test/*.test.js\"",
+    "package": "npm run typecheck && node esbuild.mjs --production && vsce package --no-dependencies",
+    "vscode:prepublish": "node esbuild.mjs --production"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^4.0.0",
+    "esbuild": "^0.28.0",
+    "typescript": "^5.9.3"
+  }
+}
