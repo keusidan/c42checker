@@ -67,6 +67,8 @@ export interface Settings {
   protoSyncOnRun: boolean;
   protoSyncOnSave: boolean;
   /** コンパイル引数 (VS Code の settings.json の c42check.compile.* / clangTidy.* / valgrind.*) */
+  /** norminette と c_formatter_42 の対象から外すファイル (パターン)。既定: main.c */
+  normExclude: string[];
   compileCflags: string[];
   compileLdflags: string[];
   compileLibs: string[];
@@ -110,6 +112,7 @@ export const DEFAULT_SETTINGS: Settings = {
   protoSourceDir: '',
   protoSyncOnRun: false,
   protoSyncOnSave: false,
+  normExclude: ['main.c'],
   compileCflags: [],
   compileLdflags: [],
   compileLibs: [],

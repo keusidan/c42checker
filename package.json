@@ -494,6 +494,22 @@
             }
           },
           "default": {}
+        },
+        "c42check.normExclude": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "main.c"
+          ],
+          "markdownDescription": "**norminette と c_formatter_42 の対象から外す**ファイル。他のチェック (警告強化ビルド、clang-tidy、sanitizer など) は、除外したファイルにも行われる。\n\n- `/` を含まないパターンは**ファイル名**に一致する (どの深さでも): `main.c` は `src/main.c` にも一致\n- `/` を含むパターンは、ワークスペースルートからの**相対パス**に一致する: `/main.c` は直下の main.c だけ\n- `/` で終わるパターンは、そのディレクトリ以下の全て: `tests/`\n- `*` は `/` 以外の任意の文字列、`**` は `/` も含む任意の文字列\n\n例: `[\"main.c\", \"tests/\", \"*_test.c\"]`。空にすると、全ての .c / .h が対象になる。",
+          "examples": [
+            [
+              "main.c",
+              "tests/"
+            ]
+          ]
         }
       }
     }

@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { extraCflags, normalizeArgs, stepArgs } from './args';
+import { isExcluded } from './exclude';
 import { buildBinary, buildInputs, NO_MAIN_HINT, NO_MAIN_REASON } from './build';
 import { exec } from './exec';
 import {
@@ -55,6 +56,16 @@ function needMain(ctx: Context): Skip | undefined {
   return buildInputs(ctx).usable ? undefined : { reason: NO_MAIN_REASON, hint: NO_MAIN_HINT };
 }
 
+/** norminette と c_formatter_42 の対象 (.c と .h)。設定 normExclude (既定: main.c) に一致するファイルは除く。 */
+export function normTargets(ctx: Context): string[] {
+  return [...ctx.sources, ...ctx.headers].filter((f) => !isExcluded(f, ctx.root, ctx.settings.normExclude));
+}
+
+const NO_NORM_TARGETS: Skip = {
+  reason: '対象のファイルが全て c42check.normExclude で除外されています',
+  hint: '設定 `c42check.normExclude` を確認してください',
+};
+
 const staticMs = (ctx: Context) => ctx.settings.staticTimeoutSec * 1000;
 const incFlags = (ctx: Context) => ctx.includeDirs.map((d) => `-I${d}`);
 const cmdline = (cmd: string, args: string[]) => `$ ${cmd} ${args.join(' ')}\n`;
@@ -86,10 +97,14 @@ const cFormatter: StepDef = {
   stage: 1,
   note: 'norminette の前に、.c / .h を **その場で書き換えて** 整形します (`#include` の並び替えも行います)。変更前の内容は .42check/format-backup/ に退避されます。',
   prerequisite: (ctx) =>
-    first(needTool(ctx, 'cFormatter', 'c_formatter_42'), ctx.sources.length + ctx.headers.length === 0 ? NO_SOURCES : undefined),
+    first(
+      needTool(ctx, 'cFormatter', 'c_formatter_42'),
+      ctx.sources.length + ctx.headers.length === 0 ? NO_SOURCES : undefined,
+      ctx.sources.length + ctx.headers.length > 0 && normTargets(ctx).length === 0 ? NO_NORM_TARGETS : undefined,
+    ),
   async run(ctx) {
     const bin = ctx.tools.cFormatter!;
-    const files = [...ctx.sources, ...ctx.headers];
+    const files = normTargets(ctx); // c42check.normExclude (既定: main.c) は整形しない
     // エディタに未保存の変更があるファイルは、ディスク上を書き換えると編集中の内容と食い違うので整形しない
     const dirty = files.filter((f) => ctx.isFileDirty?.(f));
     if (dirty.length > 0) {
@@ -186,9 +201,14 @@ const norminette: StepDef = {
   id: 'norminette',
   label: 'norminette',
   stage: 1,
-  prerequisite: (ctx) => first(needTool(ctx, 'norminette', 'norminette'), ctx.sources.length + ctx.headers.length === 0 ? NO_SOURCES : undefined),
+  prerequisite: (ctx) =>
+    first(
+      needTool(ctx, 'norminette', 'norminette'),
+      ctx.sources.length + ctx.headers.length === 0 ? NO_SOURCES : undefined,
+      ctx.sources.length + ctx.headers.length > 0 && normTargets(ctx).length === 0 ? NO_NORM_TARGETS : undefined,
+    ),
   async run(ctx) {
-    const files = [...ctx.sources, ...ctx.headers].map((f) => path.relative(ctx.root, f));
+    const files = normTargets(ctx).map((f) => path.relative(ctx.root, f)); // c42check.normExclude (既定: main.c) は検査しない
     const bin = ctx.tools.norminette!;
     const args = [...stepArgs(ctx, 'norminette'), ...files];
     const r = await exec(bin, args, { cwd: ctx.root, timeoutMs: staticMs(ctx), signal: ctx.signal });

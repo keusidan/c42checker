@@ -16,7 +16,7 @@ export function sampleContext(
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), `c42-${name}-`));
   fs.cpSync(path.join(REPO, 'samples', name), dir, { recursive: true });
   for (const r of remove) fs.rmSync(path.join(dir, r), { recursive: true, force: true });
-  const settings: Settings = { ...DEFAULT_SETTINGS, ...overrides, checks: { ...DEFAULT_SETTINGS.checks, ...overrides.checks } };
+  const settings: Settings = { ...DEFAULT_SETTINGS, normExclude: [], ...overrides, checks: { ...DEFAULT_SETTINGS.checks, ...overrides.checks } };
   // .vscode/settings.json の c42check.* を反映 (拡張が VS Code から読むものの代わり)
   try {
     const raw = JSON.parse(fs.readFileSync(path.join(dir, '.vscode', 'settings.json'), 'utf8')) as Record<string, unknown>;

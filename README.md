@@ -41,6 +41,15 @@ F5 で CodeLLDB のデバッガを起動でき、**事前チェックに落ち�
 
 プログラムが正常に `exit(1)` するだけでは、ASan / valgrind 側では失敗にしません (sanitizer / valgrind の報告があるかで判定)。
 
+### norminette / 整形の対象から外すファイル (既定: `main.c`)
+
+`c42check.normExclude` に一致するファイルは、**norminette の検査と、c_formatter_42 の整形の対象から外れます**。既定は `["main.c"]` です (テスト用の `main.c` など、norm に合わせたくないファイル向け)。
+
+- **外れるのは、この 2 つだけです。** 警告強化ビルド、clang-tidy、`gcc -fanalyzer`、scan-build、sanitizer、valgrind は、除外したファイルにも行われます。
+- パターンの書き方: `/` を含まなければ**ファイル名**に一致 (どの深さでも。`main.c` は `src/main.c` にも一致)、含めば**ルートからの相対パス**に一致 (`/main.c` は直下だけ)、`/` で終われば**そのディレクトリ以下の全て** (`tests/`)。`*` は `/` 以外の任意の文字列、`**` は `/` も含む任意の文字列。
+- 例: `"c42check.normExclude": ["main.c", "tests/", "*_test.c"]`。空にすると、全ての `.c` / `.h` が対象です。
+- 対象が全て除外されたときは、失敗ではなく skip になります。
+
 ### コンパイル引数 (`-lbsd` など)
 
 `-lbsd` / `-lm` / `-DDEBUG` / `-L...` のような引数は、VS Code の設定 (`settings.json`、または設定画面で「c42check」を検索) から指定できます。
@@ -130,7 +139,7 @@ sanitizer は互いに併用できないため、View の段階 2 に**別々の
 git clone https://github.com/keusidan/c42checker.git
 cd c42checker
 npm ci
-npm run package                      # c42checker-0.1.0.vsix ができる (約 45KB)
+npm run package                      # c42checker-0.1.0.vsix ができる (約 46KB)
 
 # 校舎 (sudo 不要。.vsix を Drive などで持ってくる):
 code --install-extension c42checker-0.1.0.vsix
@@ -244,6 +253,7 @@ code --install-extension llvm-vs-code-extensions.vscode-clangd
 | `c42check.workDirMaxMB` | `100` | `.42check/` の上限 (MB)。超えると警告して中断 |
 | `c42check.runTimeoutSec` | `10` | 動的チェックの実行の制限時間 (秒。valgrind は 5 倍)。超過は skip |
 | `c42check.staticTimeoutSec` | `120` | 静的チェック各ツールの制限時間 (秒) |
+| `c42check.normExclude` | `["main.c"]` | norminette と c_formatter_42 の対象から外すファイル (ファイル名 / 相対パスの glob) |
 | `c42check.mainFile` | `""` | main を持たない課題用のテスト main |
 | `c42check.compdb.includeMain` | `true` | `mainFile` を `compile_commands.json` に含めるか |
 | `c42check.compdb.source` | `"auto"` | `compile_commands.json` の生成方式 |
@@ -282,7 +292,7 @@ Node.js 22 以上が必要です (`.nvmrc`、`package.json` の `engines`)。
 npm ci
 npm run typecheck   # tsc --noEmit
 npm run build       # esbuild で dist/extension.js に bundle
-npm test            # 116 件。実際のツール (norminette / clang / valgrind など) があれば使い、無ければ該当項目は skip
+npm test            # 123 件。実際のツール (norminette / clang / valgrind など) があれば使い、無ければ該当項目は skip
 npm run package     # .vsix を作る
 ```
 
