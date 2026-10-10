@@ -1,5 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { extraCflags, normalizeArgs, stepArgs } from './args';
 import { buildBinary, buildInputs, NO_MAIN_HINT, NO_MAIN_REASON } from './build';
 import { exec } from './exec';
 import {
@@ -110,7 +111,7 @@ const cFormatter: StepDef = {
     // 強制終了 (タイムアウト / 中止) されてもユーザーの .clang-format を失わないよう、空のディレクトリを cwd にして絶対パスで渡す。
     const cwd = path.join(ctx.workDir, 'format-cwd');
     fs.mkdirSync(cwd, { recursive: true });
-    const r = await exec(bin, files, { cwd, timeoutMs: staticMs(ctx), signal: ctx.signal });
+    const r = await exec(bin, [...stepArgs(ctx, 'cFormatter'), ...files], { cwd, timeoutMs: staticMs(ctx), signal: ctx.signal });
     fs.rmSync(cwd, { recursive: true, force: true });
 
     // 失敗や中断のときも、書き換わってしまったファイルは退避する
@@ -172,7 +173,7 @@ const cFormatter: StepDef = {
 async function syntaxCheck(ctx: Context): Promise<{ checked: boolean; ok: boolean; output: string; diags: Diag[] }> {
   const cc = ctx.tools.cc;
   if (!cc || ctx.sources.length === 0) return { checked: false, ok: false, output: '', diags: [] };
-  const r = await exec(cc, ['-fsyntax-only', ...incFlags(ctx), ...ctx.sources], {
+  const r = await exec(cc, ['-fsyntax-only', ...incFlags(ctx), ...extraCflags(ctx), ...ctx.sources], {
     cwd: ctx.root,
     timeoutMs: staticMs(ctx),
     signal: ctx.signal,
@@ -189,14 +190,13 @@ const norminette: StepDef = {
   async run(ctx) {
     const files = [...ctx.sources, ...ctx.headers].map((f) => path.relative(ctx.root, f));
     const bin = ctx.tools.norminette!;
-    const r = await exec(bin, files, { cwd: ctx.root, timeoutMs: staticMs(ctx), signal: ctx.signal });
+    const args = [...stepArgs(ctx, 'norminette'), ...files];
+    const r = await exec(bin, args, { cwd: ctx.root, timeoutMs: staticMs(ctx), signal: ctx.signal });
     const diags = parseNorminette(r.output, ctx.root);
-    const out = cmdline(bin, files) + stripAnsi(r.output);
+    const out = cmdline(bin, args) + stripAnsi(r.output);
     return verdict(r.code, diags, out, { error: r.error, timedOut: r.timedOut });
   },
 };
-
-const WARN_FLAGS = ['-Wall', '-Wextra', '-Werror', '-Wshadow', '-Wconversion'];
 
 const warnings: StepDef = {
   id: 'warnings',
@@ -205,7 +205,14 @@ const warnings: StepDef = {
   prerequisite: (ctx) => first(needTool(ctx, 'cc', 'clang'), noSources(ctx)),
   async run(ctx) {
     const cc = ctx.tools.cc!;
-    const args = ['-fsyntax-only', ...WARN_FLAGS, ...incFlags(ctx), ...ctx.sources];
+    const args = [
+      '-fsyntax-only',
+      ...normalizeArgs(ctx.settings.compileWarningFlags, ctx.root),
+      ...incFlags(ctx),
+      ...extraCflags(ctx),
+      ...stepArgs(ctx, 'warnings'),
+      ...ctx.sources,
+    ];
     const r = await exec(cc, args, { cwd: ctx.root, timeoutMs: staticMs(ctx), signal: ctx.signal });
     const diags = parseCompilerOutput(r.output, ctx.root, 'clang');
     return verdict(r.code, diags, cmdline(cc, args) + r.output, { error: r.error, timedOut: r.timedOut });
@@ -221,12 +228,14 @@ const clangTidy: StepDef = {
     const tidy = ctx.tools.tidy!;
     // 合否の正は clang-tidy。warning も fail にするため --warnings-as-errors='*' を付ける。
     const args = [
-      '-checks=clang-analyzer-*,bugprone-*',
+      `-checks=${ctx.settings.clangTidyChecks}`,
       '--warnings-as-errors=*',
       '--quiet',
+      ...stepArgs(ctx, 'clangTidy'), // clang-tidy 自身のオプション (コンパイラへの引数は cflags)
       ...ctx.sources,
       '--',
       ...incFlags(ctx),
+      ...extraCflags(ctx),
     ];
     const r = await exec(tidy, args, { cwd: ctx.root, timeoutMs: staticMs(ctx), signal: ctx.signal });
     const diags = parseCompilerOutput(r.output, ctx.root, 'clang-tidy');
@@ -275,7 +284,7 @@ const scanBuild: StepDef = {
       const target = ctx.settings.useMakeCheckTarget && makeTargetExists(makefile, 'check') ? ['check'] : [];
       // Makefile が CC を固定していても scan-build の ccc-analyzer が使われるよう、コマンドラインで CC を渡す
       await run(
-        ['--status-bugs', '-o', reports, 'sh', '-c', 'exec make -B CC="$CC" "$@"', 'sh', ...target],
+        ['--status-bugs', '-o', reports, ...stepArgs(ctx, 'scanBuild'), 'sh', '-c', 'exec make -B CC="$CC" "$@"', 'sh', ...target],
         targetCwd,
       );
     } else {
@@ -283,7 +292,22 @@ const scanBuild: StepDef = {
       for (const file of ctx.sources) {
         const rel = path.join(copy, path.relative(ctx.root, file));
         await run(
-          ['--status-bugs', '-o', reports, 'sh', '-c', 'exec "$CC" "$@"', 'sh', ...incFlags(ctx).map((f) => f.replace(ctx.root, copy)), '-c', rel, '-o', '/dev/null'],
+          [
+            '--status-bugs',
+            '-o',
+            reports,
+            ...stepArgs(ctx, 'scanBuild'),
+            'sh',
+            '-c',
+            'exec "$CC" "$@"',
+            'sh',
+            ...incFlags(ctx).map((f) => f.replace(ctx.root, copy)),
+            ...extraCflags(ctx),
+            '-c',
+            rel,
+            '-o',
+            '/dev/null',
+          ],
           copy,
         );
       }
@@ -303,7 +327,7 @@ const gccAnalyzer: StepDef = {
     const outDir = path.join(ctx.workDir, 'gcc-analyzer');
     fs.mkdirSync(outDir, { recursive: true });
     // -fanalyzer は -fsyntax-only では動かないため、.o を作業ディレクトリに出力する
-    const args = ['-fanalyzer', '-c', ...incFlags(ctx), ...ctx.sources];
+    const args = ['-fanalyzer', '-c', ...incFlags(ctx), ...extraCflags(ctx), ...stepArgs(ctx, 'gccAnalyzer'), ...ctx.sources];
     const r = await exec(gcc, args, { cwd: outDir, timeoutMs: staticMs(ctx), signal: ctx.signal });
     // gcc は analyzer の警告でも終了コード 0 になるため、-Wanalyzer-* の診断を error として扱う
     const diags = parseCompilerOutput(r.output, ctx.root, 'gcc-analyzer').map((d) =>
@@ -362,7 +386,7 @@ function sanitizerStep(spec: SanitizerSpec): StepDef {
     prerequisite: (ctx) => first(needTool(ctx, 'cc', 'clang'), noSources(ctx), needMain(ctx)),
     async run(ctx) {
       const flags = ['-g', '-O1', '-fno-omit-frame-pointer', '-pthread', ...spec.flags];
-      const b = await buildBinary(ctx, path.join(ctx.workDir, spec.dir), flags, 'clang');
+      const b = await buildBinary(ctx, path.join(ctx.workDir, spec.dir), flags, 'clang', spec.id);
       if (!b.ok) {
         if (RUNTIME_MISSING.test(b.output)) {
           return {
@@ -479,11 +503,10 @@ const valgrind: StepDef = {
     }
     const EXIT = 99;
     const args = [
-      '--leak-check=full',
-      '--show-leak-kinds=all',
-      '--track-fds=yes',
-      `--error-exitcode=${EXIT}`,
+      ...normalizeArgs(ctx.settings.valgrindArgs, ctx.root), // 既定: --leak-check=full --show-leak-kinds=all --track-fds=yes
+      `--error-exitcode=${EXIT}`, // 判定に必要なので、設定では外せない
       '--fullpath-after=',
+      ...stepArgs(ctx, 'valgrind'), // valgrind 自身のオプション (コンパイラへの引数は cflags / ldflags / libs)
       b.bin,
       ...ctx.settings.runArgs,
     ];
@@ -529,6 +552,7 @@ const cbmc: StepDef = {
       '--signed-overflow-check',
       '--unwind',
       '8',
+      ...stepArgs(ctx, 'cbmc'),
     ];
     const r = await exec(ctx.tools.cbmc!, args, { cwd: ctx.root, timeoutMs: staticMs(ctx), signal: ctx.signal });
     const diags = parseCbmc(r.output, ctx.root);
@@ -543,7 +567,7 @@ const framaC: StepDef = {
   stage: 2,
   prerequisite: (ctx) => first(needTool(ctx, 'framaC', 'frama-c'), noSources(ctx), needMain(ctx)),
   async run(ctx) {
-    const args = ['-eva', '-eva-precision', '1', ...incFlags(ctx).map((f) => `-cpp-extra-args=${f}`), ...buildInputs(ctx).files];
+    const args = ['-eva', '-eva-precision', '1', ...incFlags(ctx).map((f) => `-cpp-extra-args=${f}`), ...stepArgs(ctx, 'framaC'), ...buildInputs(ctx).files];
     const r = await exec(ctx.tools.framaC!, args, { cwd: ctx.root, timeoutMs: staticMs(ctx), signal: ctx.signal });
     const diags = parseFramaC(r.output, ctx.root);
     return verdict(r.code, diags, cmdline('frama-c', args) + r.output, { error: r.error, timedOut: r.timedOut });

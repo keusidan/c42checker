@@ -18,6 +18,21 @@ function cfg(): vscode.WorkspaceConfiguration {
   return vscode.workspace.getConfiguration('c42check');
 }
 
+/** 文字列の配列として読む。型が違う (設定の書き間違い) ときは既定値に戻す。 */
+function strings(v: unknown, fallback: string[]): string[] {
+  return Array.isArray(v) && v.every((x) => typeof x === 'string') ? (v as string[]) : fallback;
+}
+
+function perStep(v: unknown): Partial<Record<StepId, string[]>> {
+  const out: Partial<Record<StepId, string[]>> = {};
+  if (typeof v !== 'object' || v === null) return out;
+  for (const id of STEP_IDS) {
+    const list = (v as Record<string, unknown>)[id];
+    if (Array.isArray(list) && list.every((x) => typeof x === 'string')) out[id] = list as string[];
+  }
+  return out;
+}
+
 export function readChecks(): Record<StepId, boolean> {
   const raw = cfg().get<Record<string, boolean>>('checks') ?? {};
   const checks = { ...DEFAULT_CHECKS };
@@ -46,6 +61,13 @@ export function readSettings(): Settings {
     protoSourceDir: c.get<string>('proto.sourceDir') ?? d.protoSourceDir,
     protoSyncOnRun: c.get<boolean>('proto.syncOnRun') ?? d.protoSyncOnRun,
     protoSyncOnSave: c.get<boolean>('proto.syncOnSave') ?? d.protoSyncOnSave,
+    compileCflags: strings(c.get<unknown>('compile.cflags'), d.compileCflags),
+    compileLdflags: strings(c.get<unknown>('compile.ldflags'), d.compileLdflags),
+    compileLibs: strings(c.get<unknown>('compile.libs'), d.compileLibs),
+    compileWarningFlags: strings(c.get<unknown>('compile.warningFlags'), d.compileWarningFlags),
+    compilePerStep: perStep(c.get<unknown>('compile.perStep')),
+    clangTidyChecks: c.get<string>('clangTidy.checks') ?? d.clangTidyChecks,
+    valgrindArgs: strings(c.get<unknown>('valgrind.args'), d.valgrindArgs),
     checks: readChecks(),
   };
 }

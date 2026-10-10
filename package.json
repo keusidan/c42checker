@@ -330,6 +330,170 @@
           "type": "boolean",
           "default": false,
           "description": ".c の保存時にプロトタイプを同期します。差分プレビューは出ません。マーカーが無いヘッダには何もしません。"
+        },
+        "c42check.compile.cflags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "**全てのコンパイル**に追加する引数。clang / gcc / clang-tidy の呼び出しと `compile_commands.json` (clangd) に入る。\n\n例: `[\"-DDEBUG\", \"-std=gnu11\", \"-I${workspaceFolder}/extra\"]`\n\n各要素は shell 風に分割される (`\"-DA -DB\"` は 2 つ。空白を含むパスは `'...'` で囲む)。`${workspaceFolder}` が使える。Makefile を使う項目 (scan-build) は Makefile 自身のフラグで動く。",
+          "examples": [
+            [
+              "-DDEBUG",
+              "-std=gnu11"
+            ]
+          ]
+        },
+        "c42check.compile.ldflags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "**リンクする全てのビルド** (ASan / TSan / MSan / valgrind 用とデバッグ用) の、入力ファイルの**前**に追加する引数。\n\n例: `[\"-L/usr/local/lib\", \"-Wl,-rpath,/usr/local/lib\"]`",
+          "examples": [
+            [
+              "-L/usr/local/lib"
+            ]
+          ]
+        },
+        "c42check.compile.libs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "**リンクする全てのビルド**の、入力ファイルの**後ろ**に追加するライブラリ。\n\n例: `[\"-lbsd\", \"-lm\", \"-lreadline\"]`\n\n`-l` は入力ファイルより後ろに置かないと、GNU ld が参照を解決できないことがあるため、`ldflags` とは別にしてある。",
+          "examples": [
+            [
+              "-lbsd",
+              "-lm"
+            ]
+          ]
+        },
+        "c42check.compile.warningFlags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "-Wall",
+            "-Wextra",
+            "-Werror",
+            "-Wshadow",
+            "-Wconversion"
+          ],
+          "markdownDescription": "段階 1 の**警告強化ビルド**に使う警告フラグ (既定値を置き換える)。例えば `-Wconversion` を外したいときは、それを除いた配列にする。"
+        },
+        "c42check.clangTidy.checks": {
+          "type": "string",
+          "default": "clang-analyzer-*,bugprone-*",
+          "markdownDescription": "clang-tidy の `-checks=` に渡す値 (既定値を置き換える)。例: `clang-analyzer-*,bugprone-*,-bugprone-easily-swappable-parameters`"
+        },
+        "c42check.valgrind.args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "--leak-check=full",
+            "--show-leak-kinds=all",
+            "--track-fds=yes"
+          ],
+          "markdownDescription": "valgrind に渡すオプション (既定値を置き換える)。判定に必要な `--error-exitcode` と `--fullpath-after` は、設定に関わらず常に付く。"
+        },
+        "c42check.compile.perStep": {
+          "type": "object",
+          "additionalProperties": false,
+          "markdownDescription": "**項目ごと**に、その項目のツールにだけ追加する引数。キーは `c42check.checks` と同じ項目名。\n\n- `warnings` / `gccAnalyzer` / `asanUbsan` / `tsan` / `msan`: **コンパイラへの引数**\n- `clangTidy`: **clang-tidy 自身のオプション** (コンパイラへの引数は `compile.cflags`)\n- `scanBuild`: **scan-build のオプション** (例: `-enable-checker`)\n- `valgrind`: **valgrind のオプション** (例: `--suppressions=...`)\n- `norminette` / `cFormatter` / `cbmc` / `framaC`: 各コマンドの引数\n\n例: `{ \"warnings\": [\"-Wno-unused-parameter\"], \"valgrind\": [\"--suppressions=${workspaceFolder}/readline.supp\"] }`",
+          "properties": {
+            "cFormatter": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "markdownDescription": "c_formatter_42 への引数"
+            },
+            "norminette": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "markdownDescription": "norminette への引数 (ファイル名の前に入る)"
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "markdownDescription": "警告強化ビルドの clang への引数"
+            },
+            "clangTidy": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "markdownDescription": "clang-tidy 自身のオプション (`--` より前)"
+            },
+            "scanBuild": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "markdownDescription": "scan-build のオプション"
+            },
+            "gccAnalyzer": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "markdownDescription": "gcc -fanalyzer への引数"
+            },
+            "asanUbsan": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "markdownDescription": "ASan + UBSan ビルドの clang への引数"
+            },
+            "tsan": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "markdownDescription": "TSan ビルドの clang への引数"
+            },
+            "msan": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "markdownDescription": "MSan ビルドの clang への引数"
+            },
+            "valgrind": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "markdownDescription": "valgrind のオプション"
+            },
+            "cbmc": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "markdownDescription": "cbmc への引数"
+            },
+            "framaC": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "markdownDescription": "frama-c への引数"
+            }
+          },
+          "default": {}
         }
       }
     }

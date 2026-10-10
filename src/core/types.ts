@@ -66,6 +66,14 @@ export interface Settings {
   protoSourceDir: string;
   protoSyncOnRun: boolean;
   protoSyncOnSave: boolean;
+  /** コンパイル引数 (VS Code の settings.json の c42check.compile.* / clangTidy.* / valgrind.*) */
+  compileCflags: string[];
+  compileLdflags: string[];
+  compileLibs: string[];
+  compileWarningFlags: string[];
+  compilePerStep: Partial<Record<StepId, string[]>>;
+  clangTidyChecks: string;
+  valgrindArgs: string[];
   checks: Record<StepId, boolean>;
 }
 
@@ -102,6 +110,13 @@ export const DEFAULT_SETTINGS: Settings = {
   protoSourceDir: '',
   protoSyncOnRun: false,
   protoSyncOnSave: false,
+  compileCflags: [],
+  compileLdflags: [],
+  compileLibs: [],
+  compileWarningFlags: ['-Wall', '-Wextra', '-Werror', '-Wshadow', '-Wconversion'],
+  compilePerStep: {},
+  clangTidyChecks: 'clang-analyzer-*,bugprone-*',
+  valgrindArgs: ['--leak-check=full', '--show-leak-kinds=all', '--track-fds=yes'],
   checks: { ...DEFAULT_CHECKS },
 };
 

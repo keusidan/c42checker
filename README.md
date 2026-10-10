@@ -41,6 +41,51 @@ F5 で CodeLLDB のデバッガを起動でき、**事前チェックに落ち�
 
 プログラムが正常に `exit(1)` するだけでは、ASan / valgrind 側では失敗にしません (sanitizer / valgrind の報告があるかで判定)。
 
+### コンパイル引数 (`-lbsd` など)
+
+`-lbsd` / `-lm` / `-DDEBUG` / `-L...` のような引数は、VS Code の設定 (`settings.json`、または設定画面で「c42check」を検索) から指定できます。
+
+```jsonc
+{
+  "c42check.compile.cflags": ["-DDEBUG", "-std=gnu11", "-I${workspaceFolder}/extra"],
+  "c42check.compile.ldflags": ["-L/usr/local/lib"],
+  "c42check.compile.libs": ["-lbsd", "-lm"],
+  "c42check.compile.perStep": {
+    "warnings": ["-Wno-unused-parameter"],
+    "valgrind": ["--suppressions=${workspaceFolder}/readline.supp"]
+  }
+}
+```
+
+| 設定 | 渡し先 | 備考 |
+|---|---|---|
+| `c42check.compile.cflags` | **すべてのコンパイル**: 警告強化ビルド、clang-tidy (`--` の後)、`gcc -fanalyzer`、scan-build (Makefile が無いとき)、ASan / TSan / MSan / valgrind 用とデバッグ用のビルド、`compile_commands.json` (clangd) | `-D`、`-std`、`-I` など |
+| `c42check.compile.ldflags` | リンクする全ビルド (ASan / TSan / MSan / valgrind / デバッグ) の、**入力ファイルの前** | `-L`、`-Wl,-rpath,...` など |
+| `c42check.compile.libs` | リンクする全ビルドの、**入力ファイルの後ろ** | `-lbsd`、`-lm`、`-lreadline` など。**`-l` は必ずここに書く** |
+| `c42check.compile.perStep` | **その項目のツールにだけ**渡す引数。キーは `c42check.checks` と同じ項目名 | 下の表 |
+| `c42check.compile.warningFlags` | 警告強化ビルドの警告フラグ (既定値を**置き換える**) | 既定: `-Wall -Wextra -Werror -Wshadow -Wconversion` |
+| `c42check.clangTidy.checks` | clang-tidy の `-checks=` (既定値を**置き換える**) | 既定: `clang-analyzer-*,bugprone-*` |
+| `c42check.valgrind.args` | valgrind のオプション (既定値を**置き換える**) | 既定: `--leak-check=full --show-leak-kinds=all --track-fds=yes`。判定に必要な `--error-exitcode` は常に付く |
+
+- **`-l` を `libs` に分けてあるのは、リンクの順序のためです。** 静的ライブラリ (`.a`) や、`--as-needed` で動くリンカーは、参照する側のファイルより**後ろ**にあるライブラリしか使いません。
+  `ldflags` (入力の前) に `-lfoo` と書くと、`undefined reference` になります (静的ライブラリで実際に確認しています)。
+- 各要素は **shell 風に分割**されます: `"-lbsd -lm"` は 2 つの引数になります。空白を含むパスは `'...'` で囲んでください。`${workspaceFolder}` が使えます。
+  shell は介さないので、`$HOME` や `*` は展開されません。
+- Makefile を使う項目 (Makefile があるときの scan-build) は、Makefile 自身のフラグで動きます (この設定は届きません)。
+
+`c42check.compile.perStep` の各キーが、何に渡るか:
+
+| キー | 渡し先 |
+|---|---|
+| `warnings` / `gccAnalyzer` / `asanUbsan` / `tsan` / `msan` | **コンパイラ**への引数 |
+| `clangTidy` | **clang-tidy 自身**のオプション (`--` の前。コンパイラへの引数は `cflags`) |
+| `scanBuild` | **scan-build** のオプション (例: `-enable-checker`) |
+| `valgrind` | **valgrind** のオプション (例: `--suppressions=...`。ビルドには渡らない) |
+| `norminette` / `cFormatter` / `cbmc` / `framaC` | 各コマンドの引数 |
+
+設定の書き間違いは、VS Code が警告します (`perStep` のキーの補完と、未知のキーの警告、配列でない値の警告)。配列でない値は無視され、既定値になります。
+デバッグ用ビルド (F5) には `cflags` / `ldflags` / `libs` が効きます (`perStep` は効きません)。
+
 ### c_formatter_42 による整形 (norminette の前)
 
 段階 1 の**先頭** (norminette の前) に、`c_formatter_42` でソースを整形する項目があります。View の段階 1 の「c_formatter_42 (整形)」にチェックを入れると、
@@ -82,7 +127,7 @@ sanitizer は互いに併用できないため、View の段階 2 に**別々の
 git clone https://github.com/keusidan/c42checker.git
 cd c42checker
 npm ci
-npm run package                      # c42checker-0.1.0.vsix ができる (約 41KB)
+npm run package                      # c42checker-0.1.0.vsix ができる (約 44KB)
 
 # 校舎 (sudo 不要。.vsix を Drive などで持ってくる):
 code --install-extension c42checker-0.1.0.vsix
@@ -234,7 +279,7 @@ Node.js 22 以上が必要です (`.nvmrc`、`package.json` の `engines`)。
 npm ci
 npm run typecheck   # tsc --noEmit
 npm run build       # esbuild で dist/extension.js に bundle
-npm test            # 95 件。実際のツール (norminette / clang / valgrind など) があれば使い、無ければ該当項目は skip
+npm test            # 109 件。実際のツール (norminette / clang / valgrind など) があれば使い、無ければ該当項目は skip
 npm run package     # .vsix を作る
 ```
 
