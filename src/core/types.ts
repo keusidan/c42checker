@@ -134,6 +134,8 @@ export interface Tools {
   /** PATH 上の候補名。Universal Ctags かどうかは使う直前に --version で確認する */
   ctags?: string;
   cFormatter?: string;
+  /** util-linux の setarch。TSan / MSan を ASLR 無効 (setarch -R) で起動するのに使う */
+  setarch?: string;
 }
 
 export interface RunIO {

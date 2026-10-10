@@ -32,20 +32,21 @@ VS Code 上でしか確認できない項目は私の環境では実行できて
 
 チェック内容の判定は版によって差が出うる (特に clang-tidy / gcc -fanalyzer の検出)。上記の校舎の実測で、`-12` 系でも想定どおりだったことは確認済み。
 
-## 自動テスト (109 件)
+## 自動テスト (116 件)
 
 ```sh
 # norminette が PATH に必要。無い場合は該当項目が skip になる
 npm test        # = node esbuild.mjs --test && node --test "out-test/*.test.js"
 ```
 
-結果: **109 件中 109 件 pass、0 fail、0 skip** (2026-10-07、上記の環境)。
+結果: **116 件中 116 件 pass、0 fail、0 skip** (2026-10-07、上記の環境)。
 
 - `test/parse.test.ts`: 出力の parser (gcc / clang / UBSan / norminette (ANSI カラー除去) / ASan / LSan / valgrind)
 - `test/pipeline.test.ts`: fail-fast の制御 (fake step で、段階 1 失敗 → 段階 2 非実行 / `failFast: "step"` / skip は失敗ではない / 空き容量不足 / `.42check/` 上限超過)
 - `test/compdb.test.ts`: `compile_commands.json` の生成 (files / make-n / clang-MJ / auto の 4 方式)、`mainFile` の include 切り替え、`.clangd` を他人のものは上書きしない
 - `test/integration.test.ts`: **実際のツール**で samples を検証 (下表)
 - `test/launch.test.ts`: launch.json / tasks.json の生成とマージ (既存項目は変更しない)
+- `test/setarch.test.ts`: TSan / MSan の `setarch -R` 経由の起動。本物の setarch で ASLR が実際に止まること (スタック位置が毎回同じ)、`setarch <arch> -R <prog>` の引数、personality を変えられない環境での再実行、setarch が無い環境、ASan と valgrind は使わないこと、繰り返し実行しても毎回検出すること
 - `test/compileargs.test.ts`: コンパイル引数の設定。引数の正規化 (`${workspaceFolder}` の展開、shell 風の分割、shell を介さないこと)、静的ライブラリ `libfoo.a` を使った `-L` / `-l` の検証 (指定が無ければリンク失敗、`ldflags` に `-l` を書くと失敗、`libs` なら成功)、`-D` が必須の課題が全ての項目で通ること、`compile_commands.json` への反映、`perStep` / `warningFlags` / `clangTidy.checks` / `valgrind.args`、VS Code の設定からの読み込みと型が違うときの既定値への戻り、package.json の既定値と DEFAULT_SETTINGS の一致
 - `test/formatter.test.ts`: c_formatter_42 (0.2.8)。norminette の前に実行される順序、norm 違反が減ること、退避、冪等性、**整形でコードが壊れたら元に戻して fail** (長い文字列リテラル / include の順序依存)、未保存ファイルの skip、ツール無しの skip、`.clang-format` に触れないこと、TSan / MSan の起動時 SEGV の判定
 - `test/proto.test.ts`: プロトタイプ同期。ctags の出力の整形 (純粋関数)、マーカー処理、**本物の universal-ctags 5.9.0** での抽出 → norm 形式で書き込み → **norminette 通過** → 生成したヘッダでプロジェクトがコンパイルできる、冪等性、マーカー無し・壊れ・結果が空・宣言に直せない関数・ctags 無し / Exuberant 版・未保存のヘッダでヘッダが変わらないこと、段階 0 での同期
@@ -177,4 +178,16 @@ CodeLLDB と clangd は別計測で、校舎の実機での実測は CodeLLDB 16
 - ユーザーのコードが落ちた場合 (スタックにプロジェクトのフレームがある) は、これまでどおり fail
 
 実機の MSan のログ (`.42check/` の出力、または失敗した項目の Output Channel) を確認できたら、この判定を実際の出力に合わせて見直す。
+
+## TSan / MSan の確率的な skip (校舎の実機での報告) と setarch -R
+
+実機で、バグのあるコードでも MSan が約 3 割、TSan が約 9 割の確率で skip になり、バグを見逃す、という報告があった (ユーザー報告)。
+起動のたびに結果が変わることから、カーネルの ASLR の乱数が原因と判断し、TSan / MSan の起動を `setarch <arch> -R <prog>` 経由にした。
+
+- 本環境では、修正の前から TSan / MSan が毎回起動できた (`vm.mmap_rnd_bits` が 28) ため、**確率的な skip そのものは再現できていない**。
+  そのため「修正で実機の skip が消えること」は、本環境では証明できない。**実機での確認が必要** (下記)
+- 確認できたのは、修正の前提と挙動: 本物の `setarch -R` で ASLR が実際に止まること、引数の形、`setarch` が使えない環境でのフォールバック、TSan / MSan を 8 回繰り返して毎回検出すること
+
+**実機での確認手順**: 校舎で `samples/bug-tsan` と `samples/bug-msan` を開き、TSan / MSan だけにチェックを入れて、20 回ほど続けて実行する。毎回 fail (検出) になり、skip が 1 回も出なければ解消している。
+skip が残る場合は、その項目の Output Channel のログ (`$ setarch ... -R ...` の行と、その後の出力) を確認する。
 

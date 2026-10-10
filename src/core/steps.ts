@@ -14,7 +14,7 @@ import {
   stripAnsi,
 } from './parse';
 import { makeTargetExists, findMakefile } from './sources';
-import { INSTALL_HINTS } from './tools';
+import { INSTALL_HINTS, machineArch } from './tools';
 import { copyProject } from './workdir';
 import type { Context, Diag, Stage, StepId, StepOutcome, Tools } from './types';
 
@@ -355,6 +355,11 @@ interface SanitizerSpec {
   leaks?: boolean;
   /** 起動直後の SEGV で、プロジェクトのコードに原因が見つからないものを、環境の問題として skip にする (TSan / MSan) */
   startupCrashIsEnv?: boolean;
+  /**
+   * setarch -R (ASLR 無効) 経由で起動する (TSan / MSan)。
+   * これらはシャドウメモリの配置が固定で、カーネルの ASLR の乱数が大きいと、確率的に起動できない。
+   */
+  noAslr?: boolean;
 }
 
 /**
@@ -400,26 +405,41 @@ function sanitizerStep(spec: SanitizerSpec): StepDef {
         return { status: 'fail', diags: b.diags, log: b.output, reason: `${spec.label} 用のビルドに失敗しました` };
       }
       const timeoutMs = runMs(ctx) * spec.timeoutFactor;
-      const runWith = (detectLeaks: number) =>
-        exec(b.bin, ctx.settings.runArgs, {
+      const launch = (viaSetarch: boolean): { cmd: string; args: string[] } =>
+        viaSetarch
+          ? { cmd: ctx.tools.setarch!, args: [...machineArch(), '-R', b.bin, ...ctx.settings.runArgs] }
+          : { cmd: b.bin, args: ctx.settings.runArgs };
+      const runWith = (detectLeaks: number, viaSetarch: boolean) => {
+        const l = launch(viaSetarch);
+        return exec(l.cmd, l.args, {
           cwd: ctx.root,
           timeoutMs,
           signal: ctx.signal,
           env: { ...process.env, ...spec.env(detectLeaks) },
         });
-      let r = await runWith(1);
-      let log = b.output + `$ ${b.bin} ${ctx.settings.runArgs.join(' ')}\n`;
+      };
+      let viaSetarch = !!spec.noAslr && !!ctx.tools.setarch;
+      let r = await runWith(1, viaSetarch);
+      let log = b.output + cmdline(launch(viaSetarch).cmd, launch(viaSetarch).args);
+      // setarch 自体が personality を変えられない環境 (seccomp など) では、ASLR を無効化せずに実行し直す
+      if (viaSetarch && /setarch: .*personality/i.test(r.output)) {
+        log += r.output + '[c42check] setarch -R が使えない環境のため、ASLR を無効化せずに実行し直します\n';
+        viaSetarch = false;
+        r = await runWith(1, false);
+        log += cmdline(launch(false).cmd, launch(false).args);
+      }
       if (spec.leaks && /LeakSanitizer has encountered a fatal error|LeakSanitizer does not work under ptrace/.test(r.output)) {
         log += r.output + '\n[c42check] この環境では LeakSanitizer が使えないため、リーク検査なしで再実行します (リークは valgrind 側で確認してください)\n';
-        r = await runWith(0);
+        r = await runWith(0, viaSetarch);
       }
       log += r.output;
+      const aslrNote = spec.noAslr ? (viaSetarch ? ' (setarch -R で ASLR を無効にしても起動できませんでした)' : ' (setarch -R を使えないため、ASLR は無効にしていません)') : '';
       if (CANNOT_START.test(r.output)) {
         return {
           status: 'skip',
           diags: [],
           log,
-          reason: `${spec.label} がこの環境で起動できませんでした (メモリマップ / ASLR 設定が原因の既知の問題の可能性)`,
+          reason: `${spec.label} がこの環境で起動できませんでした (メモリマップ / ASLR 設定が原因の既知の問題の可能性)${aslrNote}`,
           hint: 'カーネルの vm.mmap_rnd_bits が大きいと起動できないことがあります (`sudo sysctl vm.mmap_rnd_bits=28` で回避できる場合がありますが、sudo の無い校舎では不可)。その場合はこの項目のチェックを外してください',
         };
       }
@@ -429,7 +449,7 @@ function sanitizerStep(spec: SanitizerSpec): StepDef {
           status: 'skip',
           diags: [],
           log,
-          reason: `${spec.label} 付きのプログラムが、起動時に落ちました (プロジェクトのコードには原因が見つからず、この環境では使えない可能性が高い)`,
+          reason: `${spec.label} 付きのプログラムが、起動時に落ちました (プロジェクトのコードには原因が見つからず、この環境では使えない可能性が高い)${aslrNote}`,
           hint: 'カーネルの ASLR 設定 (vm.mmap_rnd_bits) や clang の版との組み合わせで起きることがあります。ログの先頭を確認し、校舎などで使えない場合はこの項目のチェックを外してください',
         };
       }
@@ -477,6 +497,7 @@ const tsan = sanitizerStep({
   reported: /WARNING: ThreadSanitizer/,
   timeoutFactor: 3,
   startupCrashIsEnv: true,
+  noAslr: true,
 });
 
 const msan = sanitizerStep({
@@ -489,6 +510,7 @@ const msan = sanitizerStep({
   reported: /WARNING: MemorySanitizer/,
   timeoutFactor: 3,
   startupCrashIsEnv: true,
+  noAslr: true,
 });
 
 const valgrind: StepDef = {

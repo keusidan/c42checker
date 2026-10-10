@@ -1,4 +1,5 @@
 import { accessSync, constants, readdirSync } from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import type { StepId, Tools } from './types';
 
@@ -17,6 +18,7 @@ export const CANDIDATES: Record<keyof Tools, string[]> = {
   ctags: ['universal-ctags', 'ctags-universal', 'ctags'],
   // PyPI の c-formatter-42 が入れるコマンド名は c_formatter_42
   cFormatter: ['c_formatter_42', 'c-formatter-42'],
+  setarch: ['setarch'],
 };
 
 export function findOnPath(name: string, envPath = process.env.PATH ?? ''): string | undefined {
@@ -53,6 +55,12 @@ export function findHighestVersioned(base: string, envPath = process.env.PATH ??
 }
 
 /** 校舎の指定版 (-12) → 素の名前 → 入っている最新の版、の順で探す。 */
+/** setarch に渡すアーキテクチャ名 (x86_64 / aarch64)。分からなければ省略する (新しい util-linux は省略できる)。 */
+export function machineArch(): string[] {
+  const m = typeof os.machine === 'function' ? os.machine() : '';
+  return m ? [m] : [];
+}
+
 export function detectTools(envPath = process.env.PATH ?? ''): Tools {
   const tools: Tools = {};
   for (const key of Object.keys(CANDIDATES) as (keyof Tools)[]) {
@@ -94,5 +102,6 @@ export const INSTALL_HINTS: Record<keyof Tools, string> = {
   cbmc: 'cbmc が PATH にありません。ネイティブ版のみ対応です (校舎では Docker image を pull しない方針)',
   framaC: 'frama-c が PATH にありません。ネイティブ版のみ対応です (校舎では Docker image を pull しない方針)',
   ctags: 'universal-ctags (ctags-universal) が PATH にありません。Arch: `sudo pacman -S ctags` / Ubuntu: `sudo apt install universal-ctags`。プロトタイプ同期のみで使います',
+  setarch: 'setarch (util-linux) が PATH にありません。TSan / MSan は ASLR 無効 (setarch -R) で起動しないと、環境によって起動できないことがあります',
   cFormatter: 'c_formatter_42 が PATH にありません。`pipx install c-formatter-42` (または `pip install --user c-formatter-42`) で入ります。自分の機の norminette と同じように、校舎の home に入れる場合は容量に注意してください',
 };

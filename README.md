@@ -111,6 +111,9 @@ sanitizer は互いに併用できないため、View の段階 2 に**別々の
 - TSan はスレッドを使う課題 (philosophers など) で意味があります。MSan は clang 専用です。
 - MSan は、プログラムが使うコードのすべてが instrument されている必要があり、そうでないと誤検出することがあります (libc は主な関数を interceptor が補います)。
   MSan の誤検出が疑わしいときは、valgrind の結果と照らして判断してください。出典: [MemorySanitizer — Clang docs (版つきの複製)](https://releases.llvm.org/3.6.2/tools/docs/MemorySanitizer.html)
+- **TSan / MSan は `setarch -R` (ASLR 無効) 経由で起動します。** これらはメモリ配置が固定で、カーネルの ASLR の乱数が大きい環境では、**起動のたびに確率的に失敗**します
+  (実機では、バグのあるコードでも MSan は約 3 割、TSan は約 9 割で起動できず、検出を見逃していました)。`setarch` は util-linux のコマンドで、sudo なしで使えます。
+  `setarch` が無い、または personality を変えられない環境 (seccomp など) では、ASLR を無効にせずに直接起動します (ログに書きます)。ASan+UBSan と valgrind には使いません。
 - sanitizer のランタイム (Ubuntu: `libclang-rt-<版>-dev`) が無い、または TSan / MSan がカーネルの ASLR 設定で起動できない環境では、**失敗ではなく skip + 理由 + 対処案**になります。
   TSan / MSan 付きのプログラムが、**プロジェクトのコードとは無関係に起動時に SEGV で落ちた**場合 (報告が無い、またはスタックが sanitizer のランタイム内だけ) も、環境の問題として skip にします。ユーザーのコードが落ちた場合はスタックにそのフレームが出るので、fail のままです。
   後者は `sudo sysctl vm.mmap_rnd_bits=28` で回避できることがありますが、sudo の無い校舎では使えません。出典: [PX4 docs: Sanitizers](https://docs.px4.io/main/en/test_and_ci/sanitizers)、[ziggit: ThreadSanitizer: unexpected memory mapping error](https://ziggit.dev/t/threadsanitizer-unexpected-memory-mapping-error/4930)
@@ -127,7 +130,7 @@ sanitizer は互いに併用できないため、View の段階 2 に**別々の
 git clone https://github.com/keusidan/c42checker.git
 cd c42checker
 npm ci
-npm run package                      # c42checker-0.1.0.vsix ができる (約 44KB)
+npm run package                      # c42checker-0.1.0.vsix ができる (約 45KB)
 
 # 校舎 (sudo 不要。.vsix を Drive などで持ってくる):
 code --install-extension c42checker-0.1.0.vsix
@@ -279,7 +282,7 @@ Node.js 22 以上が必要です (`.nvmrc`、`package.json` の `engines`)。
 npm ci
 npm run typecheck   # tsc --noEmit
 npm run build       # esbuild で dist/extension.js に bundle
-npm test            # 109 件。実際のツール (norminette / clang / valgrind など) があれば使い、無ければ該当項目は skip
+npm test            # 116 件。実際のツール (norminette / clang / valgrind など) があれば使い、無ければ該当項目は skip
 npm run package     # .vsix を作る
 ```
 
