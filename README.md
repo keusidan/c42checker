@@ -145,7 +145,7 @@ code --install-extension llvm-vs-code-extensions.vscode-clangd
 - 書き込み先は `c42check.proto.header` (空ならマーカーのあるヘッダを自動選択。複数あれば選択を求めます)。
 - **書き換える前に、差分をプレビューで表示**し、承認してから書き込みます。
 - **マーカーが無いヘッダには、勝手に挿入しません。** 挿入位置 (最後の `#endif` の直前、ガードが無ければ末尾) と差分を見せて、承認を取ります。マーカーが壊れている (片方だけ、重複、順序が逆) 場合はエラーです。
-- 42 Norm の形式で出力します: 戻り値の型の後ろはタブ、ポインタは関数名側に寄せ (`char\t*ft_strdup(const char *s);`)、関数名の桁を揃え、ファイルごとに `/* path/to/file.c */` で区切ります。引数なしは `(void)` にします。
+- 42 Norm の形式で出力します: 戻り値の型の後ろはタブ、ポインタは関数名側に寄せ (`char\t*ft_strdup(const char *s);`)、関数名の桁を揃え、**ファイル名のコメントや空行は入れず、関数名の順 (文字コード順) に詰めて並べます**。引数なしは `(void)` にします。マーカーの 2 行はそのまま残ります。
 - **書き込み後に `norminette` でヘッダを検査**します。指摘があれば Problems に出し、「元に戻す」を選べます。
 - **ctags の結果が空** (対象に static / main しか無い、`.c` が無いなど)、ctags が失敗した、関数ポインタを返す関数など宣言に直せないものがある、ヘッダに未保存の変更がある、のいずれかなら、**ヘッダに触らずエラー**にします。
 - ctags が無い、または Universal Ctags ではない (Exuberant / GNU 版) 環境では、**skip + 理由 + 対処案**を表示します。
@@ -234,7 +234,7 @@ Node.js 22 以上が必要です (`.nvmrc`、`package.json` の `engines`)。
 npm ci
 npm run typecheck   # tsc --noEmit
 npm run build       # esbuild で dist/extension.js に bundle
-npm test            # 94 件。実際のツール (norminette / clang / valgrind など) があれば使い、無ければ該当項目は skip
+npm test            # 95 件。実際のツール (norminette / clang / valgrind など) があれば使い、無ければ該当項目は skip
 npm run package     # .vsix を作る
 ```
 

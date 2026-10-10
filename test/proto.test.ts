@@ -71,21 +71,25 @@ test('static と main は除外し、同名 (#ifdef) は 1 つにし、直せな
   assert.deepEqual(built.unsupported.map((u) => u.name), ['ft_fp']);
 });
 
-test('出力: 戻り値の型の後ろはタブ、* は関数名側、関数名の桁を全体で揃える', () => {
+test('出力: 戻り値の型の後ろはタブ、* は関数名側、関数名の桁を全体で揃える。コメントや空行は入れず詰める', () => {
   const mk = (name: string, base: string, stars = '', file = '/w/a.c') => ({ name, file, base, stars, params: '(void)' });
-  const { lines } = renderBlock(
-    [mk('f1', 'char', '*'), mk('f2', 'size_t'), mk('f3', 'unsigned long long'), mk('f4', 'void', '', '/w/b.c')],
-    '/w',
-  );
+  const { lines } = renderBlock([mk('f1', 'char', '*'), mk('f2', 'size_t'), mk('f3', 'unsigned long long'), mk('f4', 'void', '', '/w/b.c')]);
   assert.deepEqual(lines, [
-    '/* a.c */',
     'char\t\t\t\t*f1(void);', // 'char'(4) → 20 桁まで: タブ 4 つ
     'size_t\t\t\t\tf2(void);', // 6 → 20 桁: ceil(14/4) = 4
     'unsigned long long\tf3(void);', // 18 → 20 桁: 1
-    '',
-    '/* b.c */',
-    'void\t\t\t\tf4(void);',
+    'void\t\t\t\tf4(void);', // ファイルが変わっても、コメントも空行も入らない
   ]);
+});
+
+test('出力は関数名の順 (ファイルや定義の順には依存しない)。文字コード順で、ロケールに依存しない', () => {
+  const mk = (name: string, file: string) => ({ name, file, base: 'int', stars: '', params: '(void)' });
+  const names = (es: ReturnType<typeof mk>[]) => renderBlock(es).lines.map((l) => /(\w+)\(void\)/.exec(l)![1]);
+  const input = [mk('ft_strlen', '/w/z.c'), mk('ft_bzero', '/w/a.c'), mk('ft_Atoi', '/w/m.c'), mk('ft_atoi', '/w/a.c'), mk('ft_calloc', '/w/m.c')];
+  const expected = ['ft_Atoi', 'ft_atoi', 'ft_bzero', 'ft_calloc', 'ft_strlen']; // 大文字は小文字より前
+  assert.deepEqual(names(input), expected);
+  assert.deepEqual(names([...input].reverse()), expected, '入力の順序によらず同じ出力になる');
+  assert.equal(input[0].name, 'ft_strlen', '入力の配列は書き換えない');
 });
 
 test('マーカーの間だけを置き換える (外側は 1 バイトも変えない / CRLF も保つ)', () => {
@@ -134,7 +138,16 @@ test('同期: 再帰で抽出し (static と main を除く)、42 Norm 形式で
   assert.match(inner, /^t_list\t+\*ft_lstnew\(void \*content\);$/m);
   assert.match(inner, /^t_list\t+\*\*ft_lstpick\(t_list \*\*lst, void \*\(\*f\)\(void \*\)\);$/m, '関数ポインタの引数');
   assert.match(inner, /^unsigned long long\tft_big\(unsigned int a, long b\);$/m);
-  assert.match(inner, /\/\* src\/str\/ft_strdup\.c \*\//, '再帰したファイルのパスで区切る');
+  assert.ok(!/\/\*|\*\//.test(inner.slice(MARKER_BEGIN.length)), 'ファイル名などのコメントは入れない');
+  const body = inner.slice(MARKER_BEGIN.length).split('\n').slice(1, -1);
+  assert.ok(body.length === 5 && body.every((l) => l.trim() !== ''), `空行なしで詰めて並ぶ (${body.length} 行)`);
+  assert.deepEqual(
+    body.map((l) => /(\w+)\(/.exec(l)![1]),
+    ['ft_big', 'ft_lstnew', 'ft_lstpick', 'ft_strdup', 'ft_strlen'],
+    '関数名の順 (別々のファイルにあっても)',
+  );
+  assert.ok(h.includes(`${MARKER_BEGIN}\n`) && h.includes(`\n${MARKER_END}\n`), 'マーカーは残る');
+  assert.match(h, new RegExp(`${MARKER_BEGIN.replace(/[*/]/g, '\\$&')}\\n`), 'マーカーは残る');
   assert.ok(!inner.includes('ft_hidden'), 'static は除外');
   assert.ok(!/\bmain\b/.test(inner), 'main は除外');
   // マーカーの外は変わっていない

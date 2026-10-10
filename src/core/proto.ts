@@ -142,20 +142,16 @@ export interface RenderedBlock {
 
 /**
  * 42 Norm の形式で出力する。戻り値の型の後ろはタブ、`*` は関数名側に寄せ、
- * 関数名の桁を全体で揃える (MISALIGNED_FUNC_DECL 対策)。ファイルごとにコメントで区切る。
+ * 関数名の桁を全体で揃える (MISALIGNED_FUNC_DECL 対策)。ファイル名のコメントや空行は入れず、
+ * 関数名の順 (文字コード順。ロケールに依存しない) に詰めて並べる。
  */
-export function renderBlock(entries: ProtoEntry[], baseDir: string): RenderedBlock {
+export function renderBlock(input: ProtoEntry[]): RenderedBlock {
+  const entries = [...input].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
   const maxBase = entries.reduce((m, e) => Math.max(m, visualWidth(e.base)), 0);
   const nameCol = (Math.floor(maxBase / TAB_WIDTH) + 1) * TAB_WIDTH;
   const lines: string[] = [];
   const tooLong: string[] = [];
-  let currentFile: string | undefined;
   for (const e of entries) {
-    if (e.file !== currentFile) {
-      if (currentFile !== undefined) lines.push('');
-      lines.push(`/* ${path.relative(baseDir, e.file).split(path.sep).join('/')} */`);
-      currentFile = e.file;
-    }
     const tabs = '\t'.repeat(Math.ceil((nameCol - visualWidth(e.base)) / TAB_WIDTH));
     const line = `${e.base}${tabs}${e.stars}${e.name}${e.params};`;
     if (visualWidth(line) > MAX_COLUMNS) tooLong.push(e.name);
@@ -329,7 +325,7 @@ export async function planSync(ctx: Context, opts: PlanOptions = {}): Promise<Sy
   }
 
   const oldText = fs.readFileSync(header, 'utf8');
-  const { lines, tooLong } = renderBlock(built.entries, sourceRoot);
+  const { lines, tooLong } = renderBlock(built.entries);
   const rep = replaceBlock(oldText, lines);
   if (rep.ok) {
     return {
