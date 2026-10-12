@@ -125,7 +125,7 @@ sanitizer は互いに併用できないため、View の段階 2 に**別々の
   `setarch` が無い、または personality を変えられない環境 (seccomp など) では、ASLR を無効にせずに直接起動します (ログに書きます)。ASan+UBSan と valgrind には使いません。
 - sanitizer のランタイム (Ubuntu: `libclang-rt-<版>-dev`) が無い、または TSan / MSan がカーネルの ASLR 設定で起動できない環境では、**失敗ではなく skip + 理由 + 対処案**になります。
   TSan / MSan 付きのプログラムが、**プロジェクトのコードとは無関係に起動時に SEGV で落ちた**場合 (報告が無い、またはスタックが sanitizer のランタイム内だけ) も、環境の問題として skip にします。ユーザーのコードが落ちた場合はスタックにそのフレームが出るので、fail のままです。
-  後者は `sudo sysctl vm.mmap_rnd_bits=28` で回避できることがありますが、sudo の無い校舎では使えません。出典: [PX4 docs: Sanitizers](https://docs.px4.io/main/en/test_and_ci/sanitizers)、[ziggit: ThreadSanitizer: unexpected memory mapping error](https://ziggit.dev/t/threadsanitizer-unexpected-memory-mapping-error/4930)
+  ASLR が原因の場合は、上の `setarch -R` で自動的に回避します。それでも起動できなかったときの案内文は、状況に合わせて変わります: `setarch -R` でも起動できない (ASLR 以外の原因) / `setarch` が無い (util-linux を入れる) / `setarch` が使えない (seccomp など。sudo が使える環境なら `sudo sysctl vm.mmap_rnd_bits=28` で回避できることがあります)。出典: [PX4 docs: Sanitizers](https://docs.px4.io/main/en/test_and_ci/sanitizers)、[ziggit: ThreadSanitizer: unexpected memory mapping error](https://ziggit.dev/t/threadsanitizer-unexpected-memory-mapping-error/4930)
 
 ## インストール
 
@@ -139,7 +139,7 @@ sanitizer は互いに併用できないため、View の段階 2 に**別々の
 git clone https://github.com/keusidan/c42checker.git
 cd c42checker
 npm ci
-npm run package                      # c42checker-0.1.0.vsix ができる (約 47KB)
+npm run package                      # c42checker-0.1.0.vsix ができる (約 48KB)
 
 # 校舎 (sudo 不要。.vsix を Drive などで持ってくる):
 code --install-extension c42checker-0.1.0.vsix
@@ -299,7 +299,7 @@ Node.js 22 以上が必要です (`.nvmrc`、`package.json` の `engines`)。
 npm ci
 npm run typecheck   # tsc --noEmit
 npm run build       # esbuild で dist/extension.js に bundle
-npm test            # 143 件。実際のツール (norminette / clang / valgrind など) があれば使い、無ければ該当項目は skip
+npm test            # 147 件。実際のツール (norminette / clang / valgrind など) があれば使い、無ければ該当項目は skip
 npm run package     # .vsix を作る
 ```
 

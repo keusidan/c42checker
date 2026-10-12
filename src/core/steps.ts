@@ -402,6 +402,33 @@ const RUNTIME_MISSING = /libclang_rt\.[a-z_]+-[a-z0-9_]+\.a|unsupported option '
 // TSan / MSan がカーネルの ASLR 設定などで起動できないとき (環境依存の既知の問題)
 const CANNOT_START = /unexpected memory mapping|ThreadSanitizer: unsupported|MemorySanitizer: unsupported|FATAL: (Thread|Memory)Sanitizer: .*(mapping|ASLR)/i;
 
+export interface AslrState {
+  /** この項目は ASLR 無効 (setarch -R) で起動する対象か (TSan / MSan) */
+  noAslr: boolean;
+  /** setarch -R 経由で起動した (それでも起動できなかった) */
+  viaSetarch: boolean;
+  /** setarch が PATH に無かった */
+  setarchMissing: boolean;
+  /** setarch はあったが、personality を変えられなかった (seccomp など) */
+  personalityFailed: boolean;
+}
+
+/** 起動できず skip にしたときの対処案。setarch -R (ASLR 無効) で自動的に回避を試みた結果に合わせる。 */
+export function aslrHint(s: AslrState): string {
+  const drop = 'その場合は、この項目のチェックを外してください';
+  if (!s.noAslr) return `ログの先頭を確認してください。${drop}`;
+  if (s.viaSetarch) {
+    return `setarch -R で ASLR を無効にしても起動できませんでした。ASLR 以外の原因 (clang の版とカーネルの組み合わせ、sanitizer のランタイムなど) の可能性があります。ログの先頭を確認してください。${drop}`;
+  }
+  if (s.setarchMissing) {
+    return `setarch (util-linux) が PATH に無いため、ASLR を無効にできませんでした (TSan / MSan は ASLR 無効で起動しないと、環境によって起動できません)。util-linux を入れてください。${drop}`;
+  }
+  if (s.personalityFailed) {
+    return `この環境では setarch -R が使えません (コンテナの seccomp など、ASLR を変える権限が無い)。sudo が使える環境なら、\`sudo sysctl vm.mmap_rnd_bits=28\` で回避できることがあります。${drop}`;
+  }
+  return `ログの先頭を確認してください。${drop}`;
+}
+
 /** ASan+UBSan / TSan / MSan は、項目ごとに別ビルド・別実行にする (複数選択すると複数回に分けて実行される)。 */
 function sanitizerStep(spec: SanitizerSpec): StepDef {
   return {
@@ -439,12 +466,14 @@ function sanitizerStep(spec: SanitizerSpec): StepDef {
         });
       };
       let viaSetarch = !!spec.noAslr && !!ctx.tools.setarch;
+      let personalityFailed = false;
       let r = await runWith(1, viaSetarch);
       let log = b.output + cmdline(launch(viaSetarch).cmd, launch(viaSetarch).args);
       // setarch 自体が personality を変えられない環境 (seccomp など) では、ASLR を無効化せずに実行し直す
       if (viaSetarch && /setarch: .*personality/i.test(r.output)) {
         log += r.output + '[c42check] setarch -R が使えない環境のため、ASLR を無効化せずに実行し直します\n';
         viaSetarch = false;
+        personalityFailed = true;
         r = await runWith(1, false);
         log += cmdline(launch(false).cmd, launch(false).args);
       }
@@ -453,6 +482,7 @@ function sanitizerStep(spec: SanitizerSpec): StepDef {
         r = await runWith(0, viaSetarch);
       }
       log += r.output;
+      const aslr: AslrState = { noAslr: !!spec.noAslr, viaSetarch, setarchMissing: !ctx.tools.setarch, personalityFailed };
       const aslrNote = spec.noAslr ? (viaSetarch ? ' (setarch -R で ASLR を無効にしても起動できませんでした)' : ' (setarch -R を使えないため、ASLR は無効にしていません)') : '';
       if (CANNOT_START.test(r.output)) {
         return {
@@ -460,7 +490,7 @@ function sanitizerStep(spec: SanitizerSpec): StepDef {
           diags: [],
           log,
           reason: `${spec.label} がこの環境で起動できませんでした (メモリマップ / ASLR 設定が原因の既知の問題の可能性)${aslrNote}`,
-          hint: 'カーネルの vm.mmap_rnd_bits が大きいと起動できないことがあります (`sudo sysctl vm.mmap_rnd_bits=28` で回避できる場合がありますが、sudo の無い校舎では不可)。その場合はこの項目のチェックを外してください',
+          hint: aslrHint(aslr),
         };
       }
       const diags = parseSanitizer(r.output, ctx.root);
@@ -470,7 +500,7 @@ function sanitizerStep(spec: SanitizerSpec): StepDef {
           diags: [],
           log,
           reason: `${spec.label} 付きのプログラムが、起動時に落ちました (プロジェクトのコードには原因が見つからず、この環境では使えない可能性が高い)${aslrNote}`,
-          hint: 'カーネルの ASLR 設定 (vm.mmap_rnd_bits) や clang の版との組み合わせで起きることがあります。ログの先頭を確認し、校舎などで使えない場合はこの項目のチェックを外してください',
+          hint: aslrHint(aslr),
         };
       }
       if (r.timedOut) {

@@ -6,6 +6,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { test } from 'node:test';
 import { runPipeline } from '../src/core/pipeline';
+import { aslrHint } from '../src/core/steps';
 import { findOnPath, machineArch } from '../src/core/tools';
 import type { Context, Tools } from '../src/core/types';
 import { sampleContext } from './helpers';
@@ -115,4 +116,72 @@ test('TSan / MSan を繰り返し実行しても、バグのあるコードを�
     assert.deepEqual(counts, { fail: ROUNDS, skip: 0, pass: 0 }, `${id}: ${JSON.stringify(counts)}`);
     cleanup();
   }
+});
+
+/* ───────── 起動できないときの案内文 (setarch -R で自動的に回避を試みた結果に合わせる) ───────── */
+
+/** TSan のランタイムが「メモリマップが想定外」と言って落ちるプログラム (環境の問題を再現する) */
+const CANNOT_START_MAIN = '#include <stdio.h>\nint main(void)\n{\n\tfputs("FATAL: ThreadSanitizer: unexpected memory mapping 0x1\\n", stderr);\n\treturn (1);\n}\n';
+
+async function skipFor(tools: Partial<Tools>) {
+  const { ctx, dir, cleanup } = sampleContext('ok', {}, ['str_utils.c', 'str_utils.h']);
+  fs.writeFileSync(path.join(dir, 'main.c'), CANNOT_START_MAIN);
+  ctx.tools = { ...ctx.tools, ...tools };
+  const r = await runPipeline(ctx, { selected: ['tsan'] });
+  cleanup();
+  return result(r, 'tsan');
+}
+
+test('案内文: setarch -R で ASLR を無効にしても起動できなかった → ASLR 以外の原因。古い「sudo sysctl (校舎では不可)」ではない', async (t) => {
+  const probe = sampleContext('ok');
+  if (!need(probe.ctx, 'cc')) {
+    probe.cleanup();
+    return t.skip('clang が無い');
+  }
+  probe.cleanup();
+  const fake = fakeSetarch('pass-through');
+  const x = await skipFor({ setarch: fake.bin });
+  if (x.status !== 'skip' && /ランタイム/.test(x.reason ?? '')) return t.skip('TSan が使えない');
+  assert.equal(x.status, 'skip', x.log);
+  assert.match(x.reason ?? '', /setarch -R で ASLR を無効にしても起動できませんでした/);
+  assert.match(x.hint ?? '', /setarch -R で ASLR を無効にしても起動できませんでした.*ASLR 以外の原因/);
+  assert.doesNotMatch(x.hint ?? '', /sudo|校舎では不可/, 'setarch -R で自動的に回避済みなので、sudo sysctl は案内しない');
+  assert.match(x.hint ?? '', /チェックを外してください/);
+  fs.rmSync(fake.dir, { recursive: true });
+});
+
+test('案内文: setarch が無い → util-linux を入れる', async (t) => {
+  const probe = sampleContext('ok');
+  if (!need(probe.ctx, 'cc')) {
+    probe.cleanup();
+    return t.skip('clang が無い');
+  }
+  probe.cleanup();
+  const x = await skipFor({ setarch: undefined });
+  if (x.status !== 'skip' || /ランタイム/.test(x.reason ?? '')) return t.skip('TSan が使えない');
+  assert.match(x.reason ?? '', /ASLR は無効にしていません/);
+  assert.match(x.hint ?? '', /setarch \(util-linux\) が PATH に無い.*util-linux を入れてください/);
+  assert.doesNotMatch(x.hint ?? '', /校舎では不可/);
+});
+
+test('案内文: setarch が personality を変えられない (seccomp など) → sudo が使える環境なら sysctl で回避できることがある', async (t) => {
+  const probe = sampleContext('ok');
+  if (!need(probe.ctx, 'cc')) {
+    probe.cleanup();
+    return t.skip('clang が無い');
+  }
+  probe.cleanup();
+  const fake = fakeSetarch('personality-error');
+  const x = await skipFor({ setarch: fake.bin });
+  if (x.status !== 'skip' || /ランタイム/.test(x.reason ?? '')) return t.skip('TSan が使えない');
+  assert.match(x.hint ?? '', /setarch -R が使えません \(コンテナの seccomp など/);
+  assert.match(x.hint ?? '', /sudo が使える環境なら.*sudo sysctl vm\.mmap_rnd_bits=28.*回避できることがあります/, 'sudo が使えることを前提にした案内');
+  assert.doesNotMatch(x.hint ?? '', /校舎では不可/);
+  fs.rmSync(fake.dir, { recursive: true });
+});
+
+test('案内文 (純粋関数): ASan など ASLR と無関係な項目には、ASLR や setarch の案内を出さない', () => {
+  const h = aslrHint({ noAslr: false, viaSetarch: false, setarchMissing: true, personalityFailed: false });
+  assert.doesNotMatch(h, /setarch|ASLR|sysctl/);
+  assert.match(h, /チェックを外してください/);
 });

@@ -32,20 +32,21 @@ VS Code 上でしか確認できない項目は私の環境では実行できて
 
 チェック内容の判定は版によって差が出うる (特に clang-tidy / gcc -fanalyzer の検出)。上記の校舎の実測で、`-12` 系でも想定どおりだったことは確認済み。
 
-## 自動テスト (143 件)
+## 自動テスト (147 件)
 
 ```sh
 # norminette が PATH に必要。無い場合は該当項目が skip になる
 npm test        # = node esbuild.mjs --test && node --test "out-test/*.test.js"
 ```
 
-結果: **143 件中 143 件 pass、0 fail、0 skip** (2026-10-07、上記の環境)。
+結果: **147 件中 147 件 pass、0 fail、0 skip** (2026-10-07、上記の環境)。
 
 - `test/parse.test.ts`: 出力の parser (gcc / clang / UBSan / norminette (ANSI カラー除去) / ASan / LSan / valgrind)
 - `test/pipeline.test.ts`: fail-fast の制御 (fake step で、段階 1 失敗 → 段階 2 非実行 / `failFast: "step"` / skip は失敗ではない / 空き容量不足 / `.42check/` 上限超過)
 - `test/compdb.test.ts`: `compile_commands.json` の生成 (files / make-n / clang-MJ / auto の 4 方式)、`mainFile` の include 切り替え、`.clangd` を他人のものは上書きしない
 - `test/integration.test.ts`: **実際のツール**で samples を検証 (下表)
 - `test/launch.test.ts`: launch.json / tasks.json の生成とマージ (既存項目は変更しない)
+- `test/setarch.test.ts` の「案内文」: TSan / MSan が起動できず skip になったときの対処案が、setarch -R で回避済みか・setarch が無いか・setarch が使えないか、に合わせて変わること (古い「sudo sysctl (校舎では不可)」を出さないこと)
 - `test/protoui.test.ts`: 「ヘッダにプロトタイプを反映」の UI の流れ。差分エディタを開くだけでヘッダは変えないこと、**通知を出さないこと**、**無題のドキュメントを作らないこと** (`Untitled-1.c` の保存ダイアログの原因)、「反映する」でヘッダが書き換わり差分エディタが閉じること、「キャンセル」と × で閉じたときの扱い、前の案を閉じて 1 つだけ開くこと、差分を開いている間のヘッダの変更・未保存の変更の検出、norminette が指摘したときだけ通知して「元に戻す」で戻ること
 - `test/exclude.test.ts`: `c42check.normExclude` (既定 `main.c`)。パターンの一致規則 (ファイル名 / 相対パス / ディレクトリ / glob)、norminette と c_formatter_42 から外れること、サブディレクトリの `main.c` と `/main.c` の違い、**他のチェック (警告強化ビルド) は除外したファイルにも効くこと**、全て除外されたときの skip、既定値と VS Code の設定からの読み込み
 - `test/setarch.test.ts`: TSan / MSan の `setarch -R` 経由の起動。本物の setarch で ASLR が実際に止まること (スタック位置が毎回同じ)、`setarch <arch> -R <prog>` の引数、personality を変えられない環境での再実行、setarch が無い環境、ASan と valgrind は使わないこと、繰り返し実行しても毎回検出すること
@@ -202,4 +203,5 @@ skip が残る場合は、その項目の Output Channel のログ (`$ setarch .
 **未確認 (VS Code 本体でしか確認できない)**: タイトルバーの「反映する / キャンセル」ボタンが、反映案の差分エディタを開いたときに**実際に表示されること**。
 ボタンは、コンテキストキー `c42check.proposalActive` (「いま開いているタブが反映案の差分か」を拡張が設定する) で出し分けている。stub のテストでは、このキーが差分を開くと true、閉じると false になることまで確認した。
 表示されない場合は、差分エディタのタイトルバー (右上の `…` を含む) を確認し、なければ教えてほしい。
+**逃げ道**: 反映案の差分が開いているときだけ、コマンドパレット (Ctrl+Shift+P) から「42 Check: プロトタイプを反映する」「42 Check: 反映案をキャンセル」を実行できる (ボタンが出ない場合でも、反映できる)。
 

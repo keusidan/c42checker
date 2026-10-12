@@ -205,7 +205,7 @@ test('norminette が指摘したときだけ通知する (元に戻せる)', asy
   e.cleanup();
 });
 
-test('package.json: 差分エディタのタイトルバーに「反映する」「キャンセル」ボタンがある (コマンドパレットには出さない)', () => {
+test('package.json: 差分エディタのタイトルバーに「反映する」「キャンセル」ボタンがある (反映案が開いているときだけ、コマンドパレットからも実行できる)', () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')) as {
     contributes: {
       commands: { command: string; icon?: string }[];
@@ -217,6 +217,6 @@ test('package.json: 差分エディタのタイトルバーに「反映する」
     assert.ok(cmds.includes(c));
     const m = pkg.contributes.menus['editor/title'].find((x) => x.command === c);
     assert.equal(m?.when, 'c42check.proposalActive');
-    assert.ok(pkg.contributes.menus.commandPalette.some((x) => x.command === c && x.when === 'false'));
+    assert.ok(pkg.contributes.menus.commandPalette.some((x) => x.command === c && x.when === 'c42check.proposalActive'), 'ボタンが出ない場合の逃げ道: 反映案が開いているときだけ、コマンドパレットから実行できる');
   }
 });

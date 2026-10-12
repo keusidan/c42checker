@@ -170,11 +170,11 @@
         },
         {
           "command": "c42check.applyProposal",
-          "when": "false"
+          "when": "c42check.proposalActive"
         },
         {
           "command": "c42check.cancelProposal",
-          "when": "false"
+          "when": "c42check.proposalActive"
         }
       ],
       "editor/title": [
