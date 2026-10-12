@@ -61,6 +61,7 @@ export function readSettings(): Settings {
     protoSourceDir: c.get<string>('proto.sourceDir') ?? d.protoSourceDir,
     protoSyncOnRun: c.get<boolean>('proto.syncOnRun') ?? d.protoSyncOnRun,
     protoSyncOnSave: c.get<boolean>('proto.syncOnSave') ?? d.protoSyncOnSave,
+    protoSkipExisting: c.get<boolean>('proto.skipExisting') ?? d.protoSkipExisting,
     normExclude: strings(c.get<unknown>('normExclude'), d.normExclude),
     compileCflags: strings(c.get<unknown>('compile.cflags'), d.compileCflags),
     compileLdflags: strings(c.get<unknown>('compile.ldflags'), d.compileLdflags),

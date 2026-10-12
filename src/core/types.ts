@@ -66,6 +66,8 @@ export interface Settings {
   protoSourceDir: string;
   protoSyncOnRun: boolean;
   protoSyncOnSave: boolean;
+  /** 同じ関数がマーカーの外 (手書き) で既に宣言されていれば、ブロックには入れない */
+  protoSkipExisting: boolean;
   /** コンパイル引数 (VS Code の settings.json の c42check.compile.* / clangTidy.* / valgrind.*) */
   /** norminette と c_formatter_42 の対象から外すファイル (パターン)。既定: main.c */
   normExclude: string[];
@@ -112,6 +114,7 @@ export const DEFAULT_SETTINGS: Settings = {
   protoSourceDir: '',
   protoSyncOnRun: false,
   protoSyncOnSave: false,
+  protoSkipExisting: true,
   normExclude: ['main.c'],
   compileCflags: [],
   compileLdflags: [],

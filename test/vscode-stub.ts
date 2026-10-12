@@ -8,6 +8,17 @@ export const state = {
   trusted: true,
   messages: [] as string[],
   updates: [] as { key: string; value: unknown }[],
+  /** executeCommand の呼び出し履歴 */
+  calls: [] as { cmd: string; args: unknown[] }[],
+  /** setContext で設定されたコンテキストキー */
+  context: {} as Record<string, unknown>,
+  /** エディタで未保存の変更がある (isDirty) ファイルの fsPath */
+  dirty: new Set<string>(),
+  statusBar: [] as string[],
+  /** workspace.openTextDocument の呼び出し回数 (無題のドキュメントを作ると、保存ダイアログが出てしまう) */
+  openedDocs: 0,
+  /** showWarningMessage が選んだ項目 */
+  warnChoice: undefined as string | undefined,
 };
 
 export class EventEmitter<T> {
@@ -29,6 +40,13 @@ const ok = async (m: string): Promise<undefined> => {
   return undefined;
 };
 
+interface Tab {
+  input: unknown;
+  label: string;
+}
+const tabEmitter = new EventEmitter<{ opened: Tab[]; closed: Tab[]; changed: Tab[] }>();
+export const tabGroup = { tabs: [] as Tab[], activeTab: undefined as Tab | undefined };
+
 export const window = {
   createOutputChannel: (name: string) => ({
     name,
@@ -46,8 +64,30 @@ export const window = {
     dispose: () => undefined,
   }),
   showErrorMessage: ok,
-  showWarningMessage: ok,
+  showWarningMessage: async (m: string) => {
+    state.messages.push(m);
+    return state.warnChoice;
+  },
   showInformationMessage: ok,
+  setStatusBarMessage: (m: string) => {
+    state.statusBar.push(m);
+    return { dispose: () => undefined };
+  },
+  tabGroups: {
+    get all() {
+      return [tabGroup];
+    },
+    get activeTabGroup() {
+      return tabGroup;
+    },
+    onDidChangeTabs: tabEmitter.event,
+    close: async (tab: Tab) => {
+      tabGroup.tabs = tabGroup.tabs.filter((t) => t !== tab);
+      if (tabGroup.activeTab === tab) tabGroup.activeTab = tabGroup.tabs.at(-1);
+      tabEmitter.fire({ opened: [], closed: [tab], changed: [] });
+      return true;
+    },
+  },
 };
 
 export const workspace = {
@@ -57,6 +97,14 @@ export const workspace = {
   get isTrusted() {
     return state.trusted;
   },
+  get textDocuments() {
+    return [...state.dirty].map((p) => ({ isDirty: true, uri: { fsPath: p } }));
+  },
+  openTextDocument: async () => {
+    state.openedDocs++;
+    throw new Error('無題のドキュメントは作らない (保存ダイアログが出る)');
+  },
+  registerTextDocumentContentProvider: () => ({ dispose: () => undefined }),
   getConfiguration: (section: string) => ({
     get: (key: string) => state.config[`${section}.${key}`],
     update: async (key: string, value: unknown) => {
@@ -66,7 +114,26 @@ export const workspace = {
   }),
 };
 
-export const commands = { executeCommand: async () => undefined };
+/** 差分エディタのタブ (vscode.diff を実行すると増える) */
+export class TabInputTextDiff {
+  constructor(
+    public original: UriImpl,
+    public modified: UriImpl,
+  ) {}
+}
+export const commands = {
+  executeCommand: async (cmd: string, ...args: unknown[]) => {
+    state.calls.push({ cmd, args });
+    if (cmd === 'setContext') state.context[String(args[0])] = args[1];
+    if (cmd === 'vscode.diff') {
+      const tab: Tab = { input: new TabInputTextDiff(args[0] as UriImpl, args[1] as UriImpl), label: String(args[2]) };
+      tabGroup.tabs.push(tab);
+      tabGroup.activeTab = tab;
+      tabEmitter.fire({ opened: [tab], closed: [], changed: [] });
+    }
+    return undefined;
+  },
+};
 
 export const languages = {
   createDiagnosticCollection: () => ({
@@ -81,7 +148,23 @@ export const languages = {
   }),
 };
 
-export const Uri = { file: (fsPath: string) => ({ fsPath }) };
+export class UriImpl {
+  constructor(
+    public scheme: string,
+    public path: string,
+    public query = '',
+  ) {}
+  get fsPath(): string {
+    return this.path;
+  }
+  toString(): string {
+    return `${this.scheme}:${this.path}${this.query ? `?${this.query}` : ''}`;
+  }
+}
+export const Uri = {
+  file: (fsPath: string) => new UriImpl('file', fsPath),
+  from: (c: { scheme: string; path: string; query?: string }) => new UriImpl(c.scheme, c.path, c.query),
+};
 export class Range {
   constructor(
     public sl: number,

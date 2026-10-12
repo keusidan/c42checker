@@ -59,7 +59,7 @@ export interface CtagsOutput {
  * tag 形式の出力を読む。1 行 = `name<TAB>file<TAB>line;"<TAB>kind<TAB>key:value...`。
  * JSON 出力 (jansson 必須) には依存しない。
  */
-export function parseTags(output: string, cwd: string): CtagsOutput {
+export function parseTags(output: string, cwd: string, kinds: readonly string[] = ['function']): CtagsOutput {
   const funcs: CtagsFunction[] = [];
   const warnings: string[] = [];
   for (const raw of output.split('\n')) {
@@ -72,7 +72,7 @@ export function parseTags(output: string, cwd: string): CtagsOutput {
     const cols = line.split('\t');
     if (cols.length < 4) continue;
     const [name, file, addr, kind, ...fields] = cols;
-    if (kind !== 'function') continue;
+    if (!kinds.includes(kind)) continue;
     const f: CtagsFunction = {
       name,
       file: path.resolve(cwd, file),
@@ -102,11 +102,13 @@ export async function runCtags(
   cwd: string,
   timeoutMs: number,
   signal?: AbortSignal,
+  /** ctags の kind 文字: f = 関数定義、p = プロトタイプ (ヘッダの宣言) */
+  kinds = 'f',
 ): Promise<CtagsRun> {
   const args = [
     '--languages=C',
-    '--langmap=C:.c',
-    '--kinds-C=f',
+    '--langmap=C:.c.h',
+    `--kinds-C=${kinds}`,
     '--fields=+KSt',
     '--excmd=number',
     '--sort=no',
@@ -118,7 +120,11 @@ export async function runCtags(
   const log = `$ ${bin} ${args.slice(0, 9).join(' ')} ... (${files.length} files)\n${r.output.length > 4000 ? r.output.slice(0, 4000) + '\n[省略]\n' : r.output}`;
   if (r.error) return { ok: false, error: r.error, funcs: [], warnings: [], log };
   if (r.timedOut) return { ok: false, error: 'ctags が制限時間内に終わりませんでした', funcs: [], warnings: [], log };
-  const parsed = parseTags(r.output, cwd);
+  const parsed = parseTags(
+    r.output,
+    cwd,
+    kinds.split('').map((k) => (k === 'p' ? 'prototype' : 'function')),
+  );
   // ctags は読めない入力ファイルがあっても終了コード 0 で、stderr に警告を出すだけ
   const bad = parsed.warnings.filter((w) => /cannot open|error/i.test(w));
   if (r.code !== 0 || bad.length > 0) {

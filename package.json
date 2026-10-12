@@ -107,6 +107,18 @@
         "command": "c42check.runArgs",
         "title": "実行引数を返す (launch.json 用)",
         "category": "42 Check"
+      },
+      {
+        "command": "c42check.applyProposal",
+        "title": "プロトタイプを反映する",
+        "category": "42 Check",
+        "icon": "$(check)"
+      },
+      {
+        "command": "c42check.cancelProposal",
+        "title": "反映案をキャンセル",
+        "category": "42 Check",
+        "icon": "$(close)"
       }
     ],
     "menus": {
@@ -155,6 +167,26 @@
         {
           "command": "c42check.showLog",
           "when": "false"
+        },
+        {
+          "command": "c42check.applyProposal",
+          "when": "false"
+        },
+        {
+          "command": "c42check.cancelProposal",
+          "when": "false"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "c42check.applyProposal",
+          "when": "c42check.proposalActive",
+          "group": "navigation@1"
+        },
+        {
+          "command": "c42check.cancelProposal",
+          "when": "c42check.proposalActive",
+          "group": "navigation@2"
         }
       ]
     },
@@ -510,6 +542,11 @@
               "tests/"
             ]
           ]
+        },
+        "c42check.proto.skipExisting": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "マーカーの**外**で (手書きで) すでに宣言されている関数は、auto prototypes のブロックに**入れない** (重複を防ぐ)。ブロックの中にある古い宣言は、この判定に使わない。\n\nOFF にすると、手書きの宣言があっても、全ての関数をブロックに入れる。"
         }
       }
     }

@@ -4,6 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { test } from 'node:test';
 import { exec } from '../src/core/exec';
+import { DEFAULT_SETTINGS } from '../src/core/types';
 import { parseTags } from '../src/core/ctags';
 import { runPipeline } from '../src/core/pipeline';
 import {
@@ -310,5 +311,126 @@ test('段階 0: 同期がエラー (結果が空) なら、後続の段階を実
   assert.equal(r.stoppedAt?.id, 'prepare');
   assert.match(r.stoppedAt?.reason ?? '', /プロトタイプの同期に失敗/);
   assert.equal(r.results.length, 1, '段階 1 以降は実行されない');
+  cleanup();
+});
+
+/* ───────── 手書きの宣言との重複 (proto.skipExisting) ───────── */
+
+import { findMarkerLines } from '../src/core/proto';
+
+const HAND_WRITTEN = `size_t\tft_strlen(const char *s);
+char\t*ft_strdup(const char *s);
+`;
+
+/** proto-ok のヘッダを、「マーカーの外に手書きの宣言があり、ブロックには古い内容が残っている」状態にする */
+function withHandWrittenDecls(dir: string, extra = ''): void {
+  const f = headerOf(dir);
+  const t = read(f);
+  fs.writeFileSync(
+    f,
+    t.replace(`${MARKER_BEGIN}\n`, `//part1\n${HAND_WRITTEN}${extra}\n${MARKER_BEGIN}\nint\t\tft_stale(void);\nunsigned long long\tft_big(unsigned int a, long b);\n`),
+  );
+}
+const blockOf = (text: string) => text.slice(text.indexOf(MARKER_BEGIN) + MARKER_BEGIN.length, text.indexOf(MARKER_END)).split('\n').filter((l) => l.trim() !== '');
+const names = (lines: string[]) => lines.map((l) => /(\w+)\(/.exec(l)![1]);
+
+test('マーカーの行番号を返す (1 組で、順序が正しいときだけ)', () => {
+  assert.deepEqual(findMarkerLines(`a\n${MARKER_BEGIN}\nx\n${MARKER_END}\n`), { begin: 2, end: 4 });
+  assert.equal(findMarkerLines('a\n'), undefined);
+  assert.equal(findMarkerLines(`${MARKER_END}\n${MARKER_BEGIN}\n`), undefined);
+  assert.equal(findMarkerLines(`${MARKER_BEGIN}\n${MARKER_BEGIN}\n${MARKER_END}\n`), undefined);
+});
+
+test('手書きの宣言 (マーカーの外) がある関数は、ブロックに入れない。ブロックの中の古い宣言は、判定に使わない', async (t) => {
+  const { ctx, dir, cleanup } = sampleContext('proto-ok');
+  withHandWrittenDecls(dir);
+  const r = await syncAuto(ctx);
+  if (r.status === 'skip') return t.skip('ctags が無い');
+  assert.equal(r.status, 'updated', r.message);
+  const h = read(headerOf(dir));
+  assert.deepEqual(names(blockOf(h)), ['ft_big', 'ft_lstnew', 'ft_lstpick'], 'ft_strlen / ft_strdup は手書きがあるので入らない。ft_big は古いブロックにあったが、手書きではないので入る');
+  assert.ok(!h.includes('ft_stale'), '定義の無い古い宣言はブロックから消える');
+  assert.equal((h.match(/ft_strlen/g) ?? []).length, 1, '重複しない');
+  assert.equal((h.match(/ft_strdup/g) ?? []).length, 1);
+  assert.ok(h.includes(HAND_WRITTEN), '手書きの宣言には触らない');
+  cleanup();
+});
+
+test('proto.skipExisting が OFF なら、手書きの宣言があっても全てブロックに入れる', async (t) => {
+  const { ctx, dir, cleanup } = sampleContext('proto-ok', { protoSkipExisting: false });
+  withHandWrittenDecls(dir);
+  const r = await syncAuto(ctx);
+  if (r.status === 'skip') return t.skip('ctags が無い');
+  assert.deepEqual(names(blockOf(read(headerOf(dir)))), ['ft_big', 'ft_lstnew', 'ft_lstpick', 'ft_strdup', 'ft_strlen']);
+  cleanup();
+});
+
+test('既定は ON (DEFAULT_SETTINGS と package.json が一致)', () => {
+  assert.equal(DEFAULT_SETTINGS.protoSkipExisting, true);
+  const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')) as {
+    contributes: { configuration: { properties: Record<string, { default: unknown }> } };
+  };
+  assert.equal(pkg.contributes.configuration.properties['c42check.proto.skipExisting'].default, true);
+});
+
+test('全ての関数が手書きで宣言済みなら、ブロックは空になる (エラーではない)', async (t) => {
+  const { ctx, dir, cleanup } = sampleContext('proto-ok');
+  const all = ['size_t\tft_strlen(const char *s);', 'char\t*ft_strdup(const char *s);', 'unsigned long long\tft_big(unsigned int a, long b);', 't_list\t*ft_lstnew(void *content);', 't_list\t**ft_lstpick(t_list **lst, void *(*f)(void *));'];
+  fs.writeFileSync(headerOf(dir), read(headerOf(dir)).replace(`${MARKER_BEGIN}\n`, `${all.join('\n')}\n\n${MARKER_BEGIN}\n`));
+  const r = await syncAuto(ctx);
+  if (r.status === 'skip') return t.skip('ctags が無い');
+  assert.equal(r.status, 'unchanged', 'ブロックは元から空');
+  assert.deepEqual(blockOf(read(headerOf(dir))), []);
+  cleanup();
+});
+
+test('関数名の桁は、手書きの宣言の桁に揃える (狭くしない)。複数行の宣言も数える', async (t) => {
+  const { ctx, dir, cleanup } = sampleContext('proto-ok');
+  withHandWrittenDecls(dir, 'unsigned long long\tft_wide(unsigned int a,\n\t\tlong b);\n'); // 名前は 20 桁目
+  const r = await syncAuto(ctx);
+  if (r.status === 'skip') return t.skip('ctags が無い');
+  const lines = blockOf(read(headerOf(dir)));
+  assert.ok(lines.some((l) => /^t_list\t{4}\*ft_lstnew\(/.test(l)), `t_list (6) は 20 桁まで: タブ 4 つ\n${lines.join('\n')}`);
+  assert.ok(lines.some((l) => /^unsigned long long\tft_big\(/.test(l)));
+  cleanup();
+});
+
+test('手書きの宣言が 20 桁で揃っていれば、ブロックも 20 桁に揃い、norminette (MISALIGNED_FUNC_DECL) を通る', async (t) => {
+  const { ctx, dir, cleanup } = sampleContext('proto-ok');
+  const f = headerOf(dir);
+  const hand = 'size_t\t\t\t\tft_strlen(const char *s);\nchar\t\t\t\t*ft_strdup(const char *s);\nunsigned long long\tft_wide(unsigned int a, long b);\n'; // どれも名前が 20 桁目
+  fs.writeFileSync(f, read(f).replace(`${MARKER_BEGIN}\n`, `${hand}\n${MARKER_BEGIN}\n`));
+  const r = await syncAuto(ctx);
+  if (r.status === 'skip') return t.skip('ctags が無い');
+  assert.deepEqual(names(blockOf(read(f))), ['ft_big', 'ft_lstnew', 'ft_lstpick']);
+  if (ctx.tools.norminette) assert.equal(r.norm?.status, 'pass', r.norm?.log);
+  cleanup();
+});
+
+test('手書きの桁 (8 桁) より、ブロックに必要な桁 (20 桁) が広いと揃えられない: norminette が指摘する (手書きの側は直せない)', async (t) => {
+  const { ctx, dir, cleanup } = sampleContext('proto-ok');
+  withHandWrittenDecls(dir); // 手書きは 8 桁。ブロックの ft_big は unsigned long long で 20 桁が要る
+  const r = await syncAuto(ctx);
+  if (r.status === 'skip') return t.skip('ctags が無い');
+  if (!ctx.tools.norminette) return t.skip('norminette が無い');
+  assert.equal(r.norm?.status, 'fail');
+  assert.match(r.norm?.log ?? '', /MISALIGNED_FUNC_DECL/);
+  assert.match(r.message, /norminette が指摘/, '反映後に、指摘があることが分かる');
+  cleanup();
+});
+
+test('マーカーが無いヘッダ: 手書きの宣言は全て「既存」とみなし、提案からも除く', async (t) => {
+  const { ctx, dir, cleanup } = sampleContext('proto-ok');
+  const f = headerOf(dir);
+  fs.writeFileSync(f, read(f).replace(`${MARKER_BEGIN}\n${MARKER_END}\n`, HAND_WRITTEN));
+  const before = read(f);
+  const plan = await planSync(ctx);
+  if (plan.kind === 'skip') return t.skip('ctags が無い');
+  assert.equal(plan.kind, 'needs-markers');
+  if (plan.kind === 'needs-markers') {
+    assert.equal(plan.skippedExisting, 2);
+    assert.deepEqual(names(blockOf(plan.newText)), ['ft_big', 'ft_lstnew', 'ft_lstpick']);
+  }
+  assert.equal(read(f), before);
   cleanup();
 });

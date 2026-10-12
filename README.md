@@ -139,7 +139,7 @@ sanitizer は互いに併用できないため、View の段階 2 に**別々の
 git clone https://github.com/keusidan/c42checker.git
 cd c42checker
 npm ci
-npm run package                      # c42checker-0.1.0.vsix ができる (約 46KB)
+npm run package                      # c42checker-0.1.0.vsix ができる (約 47KB)
 
 # 校舎 (sudo 不要。.vsix を Drive などで持ってくる):
 code --install-extension c42checker-0.1.0.vsix
@@ -200,7 +200,13 @@ code --install-extension llvm-vs-code-extensions.vscode-clangd
 - コマンドパレットの「42 Check: ヘッダにプロトタイプを反映」、または View の「ヘッダ」グループの項目から実行します。
 - 対象は `c42check.proto.sourceDir` 以下の `.c` (再帰。空なら `c42check.targetDir`)。**static 関数と `main` は除外**します。同名の定義が複数あれば (`#ifdef`) 最初の 1 つだけです。
 - 書き込み先は `c42check.proto.header` (空ならマーカーのあるヘッダを自動選択。複数あれば選択を求めます)。
-- **書き換える前に、差分をプレビューで表示**し、承認してから書き込みます。
+- **書き換える前に、差分をプレビューで表示**し、承認してから書き込みます。承認は通知ではなく、**差分エディタのタイトルバーのボタン**です (✓ 反映する / ✕ キャンセル)。
+  反映すると、ヘッダが書き換わり、差分エディタは閉じます (成功したときは、通知を出しません)。差分のタブを × で閉じると、キャンセルと同じです。
+  差分の右側は読み取り専用の仮想ドキュメントなので、編集も保存もできません (Ctrl+S で保存ダイアログは出ません。反映は、ボタンで行います)。
+  差分を開いている間に、ヘッダが別に変更された / 未保存の変更がある場合は、上書きせずにエラーを出します。norminette が指摘したときだけ、通知が出ます (「元に戻す」を選べます)。
+- **手書きの宣言と重複させません** (`c42check.proto.skipExisting`、既定 ON): マーカーの**外**で、すでに宣言されている関数 (ヘッダにある宣言を、これも ctags で取得します) は、ブロックに入れません。
+  ブロックの中にある古い宣言は、この判定には使いません (定義が無くなった宣言は、ブロックから消えます)。OFF にすると、手書きの宣言があっても全てブロックに入れます。
+  関数名の桁は、手書きの宣言の桁に揃えます (norm はヘッダ全体で桁を揃える規則 `MISALIGNED_FUNC_DECL` のため)。手書きの桁より、ブロックに必要な桁 (`unsigned long long` など) が広いときは、手書きの側は変えられないので、norminette が指摘します。
 - **マーカーが無いヘッダには、勝手に挿入しません。** 挿入位置 (最後の `#endif` の直前、ガードが無ければ末尾) と差分を見せて、承認を取ります。マーカーが壊れている (片方だけ、重複、順序が逆) 場合はエラーです。
 - 42 Norm の形式で出力します: 戻り値の型の後ろはタブ、ポインタは関数名側に寄せ (`char\t*ft_strdup(const char *s);`)、関数名の桁を揃え、**ファイル名のコメントや空行は入れず、関数名の順 (文字コード順) に詰めて並べます**。引数なしは `(void)` にします。マーカーの 2 行はそのまま残ります。
 - **書き込み後に `norminette` でヘッダを検査**します。指摘があれば Problems に出し、「元に戻す」を選べます。
@@ -262,6 +268,7 @@ code --install-extension llvm-vs-code-extensions.vscode-clangd
 | `c42check.proto.sourceDir` | `""` | 関数定義を抽出する `.c` のディレクトリ (空なら `targetDir`) |
 | `c42check.proto.syncOnRun` | `false` | 実行時 (段階 0) にプロトタイプを同期 (プレビューなし) |
 | `c42check.proto.syncOnSave` | `false` | `.c` の保存時にプロトタイプを同期 (プレビューなし) |
+| `c42check.proto.skipExisting` | `true` | マーカーの外で手書きの宣言がある関数は、ブロックに入れない |
 | `c42check.debug.cwd` / `.terminal` | `${workspaceFolder}` / `integrated` | launch 構成に反映 |
 | `c42check.checks` | (全項目。TSan / MSan / CBMC / Frama-C のみ `false`) | チェックボックスの状態 (View から変更すると保存される) |
 
@@ -292,7 +299,7 @@ Node.js 22 以上が必要です (`.nvmrc`、`package.json` の `engines`)。
 npm ci
 npm run typecheck   # tsc --noEmit
 npm run build       # esbuild で dist/extension.js に bundle
-npm test            # 123 件。実際のツール (norminette / clang / valgrind など) があれば使い、無ければ該当項目は skip
+npm test            # 143 件。実際のツール (norminette / clang / valgrind など) があれば使い、無ければ該当項目は skip
 npm run package     # .vsix を作る
 ```
 

@@ -32,20 +32,21 @@ VS Code 上でしか確認できない項目は私の環境では実行できて
 
 チェック内容の判定は版によって差が出うる (特に clang-tidy / gcc -fanalyzer の検出)。上記の校舎の実測で、`-12` 系でも想定どおりだったことは確認済み。
 
-## 自動テスト (123 件)
+## 自動テスト (143 件)
 
 ```sh
 # norminette が PATH に必要。無い場合は該当項目が skip になる
 npm test        # = node esbuild.mjs --test && node --test "out-test/*.test.js"
 ```
 
-結果: **123 件中 123 件 pass、0 fail、0 skip** (2026-10-07、上記の環境)。
+結果: **143 件中 143 件 pass、0 fail、0 skip** (2026-10-07、上記の環境)。
 
 - `test/parse.test.ts`: 出力の parser (gcc / clang / UBSan / norminette (ANSI カラー除去) / ASan / LSan / valgrind)
 - `test/pipeline.test.ts`: fail-fast の制御 (fake step で、段階 1 失敗 → 段階 2 非実行 / `failFast: "step"` / skip は失敗ではない / 空き容量不足 / `.42check/` 上限超過)
 - `test/compdb.test.ts`: `compile_commands.json` の生成 (files / make-n / clang-MJ / auto の 4 方式)、`mainFile` の include 切り替え、`.clangd` を他人のものは上書きしない
 - `test/integration.test.ts`: **実際のツール**で samples を検証 (下表)
 - `test/launch.test.ts`: launch.json / tasks.json の生成とマージ (既存項目は変更しない)
+- `test/protoui.test.ts`: 「ヘッダにプロトタイプを反映」の UI の流れ。差分エディタを開くだけでヘッダは変えないこと、**通知を出さないこと**、**無題のドキュメントを作らないこと** (`Untitled-1.c` の保存ダイアログの原因)、「反映する」でヘッダが書き換わり差分エディタが閉じること、「キャンセル」と × で閉じたときの扱い、前の案を閉じて 1 つだけ開くこと、差分を開いている間のヘッダの変更・未保存の変更の検出、norminette が指摘したときだけ通知して「元に戻す」で戻ること
 - `test/exclude.test.ts`: `c42check.normExclude` (既定 `main.c`)。パターンの一致規則 (ファイル名 / 相対パス / ディレクトリ / glob)、norminette と c_formatter_42 から外れること、サブディレクトリの `main.c` と `/main.c` の違い、**他のチェック (警告強化ビルド) は除外したファイルにも効くこと**、全て除外されたときの skip、既定値と VS Code の設定からの読み込み
 - `test/setarch.test.ts`: TSan / MSan の `setarch -R` 経由の起動。本物の setarch で ASLR が実際に止まること (スタック位置が毎回同じ)、`setarch <arch> -R <prog>` の引数、personality を変えられない環境での再実行、setarch が無い環境、ASan と valgrind は使わないこと、繰り返し実行しても毎回検出すること
 - `test/compileargs.test.ts`: コンパイル引数の設定。引数の正規化 (`${workspaceFolder}` の展開、shell 風の分割、shell を介さないこと)、静的ライブラリ `libfoo.a` を使った `-L` / `-l` の検証 (指定が無ければリンク失敗、`ldflags` に `-l` を書くと失敗、`libs` なら成功)、`-D` が必須の課題が全ての項目で通ること、`compile_commands.json` への反映、`perStep` / `warningFlags` / `clangTidy.checks` / `valgrind.args`、VS Code の設定からの読み込みと型が違うときの既定値への戻り、package.json の既定値と DEFAULT_SETTINGS の一致
@@ -191,4 +192,14 @@ CodeLLDB と clangd は別計測で、校舎の実機での実測は CodeLLDB 16
 
 **実機での確認手順**: 校舎で `samples/bug-tsan` と `samples/bug-msan` を開き、TSan / MSan だけにチェックを入れて、20 回ほど続けて実行する。毎回 fail (検出) になり、skip が 1 回も出なければ解消している。
 skip が残る場合は、その項目の Output Channel のログ (`$ setarch ... -R ...` の行と、その後の出力) を確認する。
+
+## ヘッダへのプロトタイプ反映: 差分エディタのボタンと、手書きの宣言との重複 (実機のスクリーンショットの指摘)
+
+- **`Untitled-1.c` の保存ダイアログ**: 実装の不備だった。差分の右側を「無題の新規ドキュメント」として開いていたため、保存すると保存ダイアログが出た。読み取り専用の仮想ドキュメント (`c42check-proposal:`) に変更し、無題のドキュメントを作らない (テストで確認)。
+- **反映後に差分が残りっぱなし / 通知**: 承認を通知から、差分エディタのタイトルバーのボタンに変更。反映・キャンセルで差分エディタを閉じ、成功時は通知を出さない。
+- **手書きの宣言との重複**: ヘッダの宣言を ctags で取得し、マーカーの外で宣言済みの関数をブロックに入れない (`c42check.proto.skipExisting`、既定 ON)。ご提示のヘッダと同じ形 (`//part1` と手書きの宣言、複数行の宣言、`static inline` の定義を含む) で ctags が宣言を取得できることを確認した。
+
+**未確認 (VS Code 本体でしか確認できない)**: タイトルバーの「反映する / キャンセル」ボタンが、反映案の差分エディタを開いたときに**実際に表示されること**。
+ボタンは、コンテキストキー `c42check.proposalActive` (「いま開いているタブが反映案の差分か」を拡張が設定する) で出し分けている。stub のテストでは、このキーが差分を開くと true、閉じると false になることまで確認した。
+表示されない場合は、差分エディタのタイトルバー (右上の `…` を含む) を確認し、なければ教えてほしい。
 

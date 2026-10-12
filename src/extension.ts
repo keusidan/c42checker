@@ -9,7 +9,7 @@ import { Problems } from './ui/diagnostics';
 import { checkEnvironment } from './ui/envCheck';
 import { generateDebugConfig, proposeAbortOnTaskErrors, suggestAbortIfNeeded } from './ui/launchGen';
 import { Outputs } from './ui/output';
-import { ProtoSync } from './ui/protoCommand';
+import { PROPOSAL_SCHEME, ProtoSync } from './ui/protoCommand';
 import { Runner } from './ui/runner';
 import { CheckTaskProvider } from './ui/taskProvider';
 import { CheckTree } from './ui/tree';
@@ -42,12 +42,15 @@ export function activate(context: vscode.ExtensionContext): void {
       if (e.affectsConfiguration('c42check')) tree.refresh();
     }),
     vscode.workspace.onDidSaveTextDocument((doc) => proto.onSaved(doc)),
+    vscode.workspace.registerTextDocumentContentProvider(PROPOSAL_SCHEME, proto.provider),
     vscode.tasks.registerTaskProvider(CheckTaskProvider.type, new CheckTaskProvider(runner)),
 
     reg('c42check.run', () => runner.run('check')),
     reg('c42check.cancel', () => runner.cancel()),
     reg('c42check.refresh', () => tree.refresh()),
     reg('c42check.syncPrototypes', () => proto.runCommand()),
+    reg('c42check.applyProposal', () => proto.applyProposal()),
+    reg('c42check.cancelProposal', () => proto.cancelProposal()),
     reg('c42check.showLog', (name?: string) => outputs.get(typeof name === 'string' ? name : 'main').show(true)),
     reg('c42check.runArgs', () => shellQuoteArgs(readSettings().runArgs)),
     reg('c42check.generateDebugConfig', () => generateDebugConfig()),

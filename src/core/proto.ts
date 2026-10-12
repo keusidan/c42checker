@@ -145,10 +145,11 @@ export interface RenderedBlock {
  * 関数名の桁を全体で揃える (MISALIGNED_FUNC_DECL 対策)。ファイル名のコメントや空行は入れず、
  * 関数名の順 (文字コード順。ロケールに依存しない) に詰めて並べる。
  */
-export function renderBlock(input: ProtoEntry[]): RenderedBlock {
+export function renderBlock(input: ProtoEntry[], minNameCol = 0): RenderedBlock {
   const entries = [...input].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
   const maxBase = entries.reduce((m, e) => Math.max(m, visualWidth(e.base)), 0);
-  const nameCol = (Math.floor(maxBase / TAB_WIDTH) + 1) * TAB_WIDTH;
+  // 関数名の桁は、ヘッダ全体で揃える (norm の MISALIGNED_FUNC_DECL)。マーカーの外の手書きの宣言の桁より狭くしない
+  const nameCol = Math.max((Math.floor(maxBase / TAB_WIDTH) + 1) * TAB_WIDTH, Math.ceil(minNameCol / TAB_WIDTH) * TAB_WIDTH);
   const lines: string[] = [];
   const tooLong: string[] = [];
   for (const e of entries) {
@@ -169,6 +170,14 @@ export type ReplaceResult =
   | { ok: false; reason: 'no-markers' | 'broken-markers'; message: string };
 
 /** マーカーの間だけを置き換える。マーカーが無い / 壊れているときは何も返さない (勝手に挿入しない)。 */
+/** マーカーの行番号 (1 始まり)。ちょうど 1 組で、順序が正しいときだけ返す。 */
+export function findMarkerLines(text: string): { begin: number; end: number } | undefined {
+  const lines = text.split(/\r?\n/);
+  const begins = lines.flatMap((l, i) => (l.trim() === MARKER_BEGIN ? [i + 1] : []));
+  const ends = lines.flatMap((l, i) => (l.trim() === MARKER_END ? [i + 1] : []));
+  return begins.length === 1 && ends.length === 1 && begins[0] < ends[0] ? { begin: begins[0], end: ends[0] } : undefined;
+}
+
 export function replaceBlock(text: string, inner: string[]): ReplaceResult {
   const eol = eolOf(text);
   const lines = text.split(/\r?\n/);
@@ -234,6 +243,8 @@ export type SyncPlan =
       oldText: string;
       newText: string;
       count: number;
+      /** マーカーの外で既に宣言されているため、ブロックに入れなかった件数 */
+      skippedExisting: number;
       excluded: number;
       tooLong: string[];
       changed: boolean;
@@ -246,6 +257,7 @@ export type SyncPlan =
       newText: string; // マーカーを挿入した提案
       insertion: Insertion;
       count: number;
+      skippedExisting: number;
       tooLong: string[];
       log: string;
     };
@@ -325,7 +337,23 @@ export async function planSync(ctx: Context, opts: PlanOptions = {}): Promise<Sy
   }
 
   const oldText = fs.readFileSync(header, 'utf8');
-  const { lines, tooLong } = renderBlock(built.entries);
+
+  // マーカーの外 (手書き) で既に宣言されている関数を、ctags でヘッダから取り出す
+  const markers = findMarkerLines(oldText);
+  const decl = await runCtags(ct.bin, [header], ctx.root, ctx.settings.staticTimeoutSec * 1000, ctx.signal, 'fp');
+  if (!decl.ok) return { kind: 'error', reason: `ヘッダの既存の宣言を ctags で取得できませんでした: ${decl.error}`, log: decl.log };
+  const existing = decl.funcs.filter((f) => !(markers && f.line > markers.begin && f.line < markers.end));
+  const declared = new Set(existing.map((f) => f.name));
+  const srcLines = oldText.split(/\r?\n/);
+  const minNameCol = existing.reduce((m, f) => {
+    const text = srcLines[f.line - 1] ?? '';
+    const at = text.indexOf(f.name);
+    return at < 0 ? m : Math.max(m, visualWidth(text.slice(0, at).replace(/\*+$/, '')));
+  }, 0);
+
+  const entries = ctx.settings.protoSkipExisting ? built.entries.filter((e) => !declared.has(e.name)) : built.entries;
+  const skippedExisting = built.entries.length - entries.length;
+  const { lines, tooLong } = renderBlock(entries, minNameCol);
   const rep = replaceBlock(oldText, lines);
   if (rep.ok) {
     return {
@@ -333,7 +361,8 @@ export async function planSync(ctx: Context, opts: PlanOptions = {}): Promise<Sy
       header,
       oldText,
       newText: rep.text,
-      count: built.entries.length,
+      count: entries.length,
+      skippedExisting,
       excluded: built.excluded,
       tooLong,
       changed: rep.text !== oldText,
@@ -342,7 +371,7 @@ export async function planSync(ctx: Context, opts: PlanOptions = {}): Promise<Sy
   }
   if (rep.reason === 'no-markers') {
     const insertion = proposeInsertion(oldText, lines);
-    return { kind: 'needs-markers', header, oldText, newText: insertion.text, insertion, count: built.entries.length, tooLong, log: run.log };
+    return { kind: 'needs-markers', header, oldText, newText: insertion.text, insertion, count: entries.length, skippedExisting, tooLong, log: run.log };
   }
   return { kind: 'error', reason: rep.message, hint: `${MARKER_BEGIN} と ${MARKER_END} を 1 組だけ残してください` };
 }
