@@ -1,0 +1,74 @@
+# main を含む全てのブランチへの push ごとに、ビルド済みの拡張機能 (.vsix) を GitHub Releases に公開する。
+# 公開されたリリースの Assets から .vsix をダウンロードして `code --install-extension` で入れられる。
+name: Release
+
+on:
+  push:
+    branches: ['**']
+  workflow_dispatch:
+
+# 同じブランチの push が続いたときは順番に処理する (リリースの作成が競合しないように。途中のものは中断しない)
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write # リリースとタグの作成に必要
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      # 型検査 → 本番用 bundle → .vsix (package.json の scripts.package)。型エラーがあればここで止まり、リリースは作られない
+      - name: Build .vsix
+        run: npm run package
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IS_DEFAULT_BRANCH: ${{ github.ref_name == github.event.repository.default_branch }}
+          COMMIT_SUBJECT: ${{ github.event.head_commit.message }}
+        run: |
+          set -euo pipefail
+
+          shopt -s nullglob
+          vsix=(*.vsix)
+          if [ "${#vsix[@]}" -ne 1 ]; then
+            echo "::error::.vsix がちょうど 1 つ見つかるはずが ${#vsix[@]} 個でした: ${vsix[*]}"
+            exit 1
+          fi
+
+          version=$(node -p "require('./package.json').version")
+          tag="v${version}-build.${GITHUB_RUN_NUMBER}"
+          short_sha="${GITHUB_SHA::7}"
+
+          notes=$(printf '%s\n' \
+            "ブランチ \`${GITHUB_REF_NAME}\` のコミット ${short_sha} からビルドした拡張機能です。" \
+            "" \
+            "インストール: \`${vsix[0]}\` をダウンロードして、\`code --install-extension ${vsix[0]}\` を実行してください。" \
+            "" \
+            "コミットメッセージ:" \
+            "" \
+            "> ${COMMIT_SUBJECT%%$'\n'*}")
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            # 同じ実行の再実行 (Re-run): 既存のリリースの .vsix を差し替える
+            gh release upload "$tag" "${vsix[0]}" --clobber
+          else
+            flags=(--target "$GITHUB_SHA" --title "${version} (build ${GITHUB_RUN_NUMBER}, ${GITHUB_REF_NAME}@${short_sha})" --notes "$notes")
+            if [ "$IS_DEFAULT_BRANCH" = "true" ]; then
+              flags+=(--latest)
+            else
+              flags+=(--prerelease) # 既定のブランチ以外は pre-release (「最新のリリース」にはならない)
+            fi
+            gh release create "$tag" "${vsix[0]}" "${flags[@]}"
+          fi

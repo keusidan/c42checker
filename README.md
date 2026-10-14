@@ -129,6 +129,17 @@ sanitizer は互いに併用できないため、View の段階 2 に**別々の
 
 ## インストール
 
+### ビルド済みの `.vsix` をダウンロードする (GitHub Releases)
+
+どのブランチでも、push のたびに GitHub Actions (`.github/workflows/release.yml`) が型検査 → ビルド → `.vsix` の作成を行い、[Releases](https://github.com/keusidan/c42checker/releases) に公開します。ビルドが失敗したとき (型エラーなど) は、リリースは作られません。
+
+- タグは `v<package.json の version>-build.<実行番号>` です (例: `v0.1.0-build.12`)。リリースの Assets の `.vsix` を取得して、`code --install-extension c42checker-<version>.vsix` で入れます。
+- 既定のブランチ (`main`) のリリースは「Latest」になります。それ以外のブランチは pre-release です。
+- テストは Actions では実行していません (norminette や sanitizer などの実ツールが必要なため)。リリースする前に手元で `npm test` を通してください。
+- 古いリリースは自動では消しません。増えたら、Releases の画面か `gh release delete` で整理してください。
+
+### 手元でビルドする
+
 **推奨: メイン機 (Arch) で `.vsix` をビルドし、校舎には `.vsix` だけを持っていく。**
 ビルドには **Node.js 22 以上**が要ります (`@vscode/vsce` は Node 22 以上、esbuild は Node 18 以上、テストの `node --test` も新しい Node が必要)。
 校舎の Node は **v12.22.9** なので、校舎ではビルドもテストもできません (`node esbuild.mjs` は構文エラーで止まります)。
