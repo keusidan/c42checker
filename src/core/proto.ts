@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { resolveCtags, runCtags, type CtagsFunction } from './ctags';
 import { exec } from './exec';
+import { isExcluded } from './exclude';
 import { parseNorminette, stripAnsi } from './parse';
 import { scanSources } from './sources';
 import type { Context, Diag } from './types';
@@ -302,9 +303,17 @@ export async function planSync(ctx: Context, opts: PlanOptions = {}): Promise<Sy
   if (!fs.existsSync(sourceRoot)) {
     return { kind: 'error', reason: `プロトタイプ抽出の対象ディレクトリがありません: ${sourceRoot}`, hint: '設定 `c42check.proto.sourceDir` を確認してください' };
   }
-  const files = scanSources(sourceRoot).sources.filter((f) => f !== ctx.mainFile);
+  // main.c など (c42check.normExclude と同じ指定) のテスト用関数は、ヘッダに載せない
+  const all = scanSources(sourceRoot).sources.filter((f) => f !== ctx.mainFile);
+  const files = all.filter((f) => !isExcluded(f, ctx.root, ctx.settings.normExclude));
   if (files.length === 0) {
-    return { kind: 'error', reason: `${sourceRoot} に .c ファイルがありません`, hint: '設定 `c42check.proto.sourceDir` を確認してください' };
+    return all.length > 0
+      ? {
+          kind: 'error',
+          reason: `対象の .c ファイルが全て c42check.normExclude で除外されています (${all.length} 件)`,
+          hint: '設定 `c42check.normExclude` を確認してください',
+        }
+      : { kind: 'error', reason: `${sourceRoot} に .c ファイルがありません`, hint: '設定 `c42check.proto.sourceDir` を確認してください' };
   }
 
   const h = resolveHeader(ctx, sourceRoot, opts);

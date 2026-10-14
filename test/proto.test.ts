@@ -365,6 +365,41 @@ test('proto.skipExisting が OFF なら、手書きの宣言があっても全�
   cleanup();
 });
 
+const MAIN_WITH_TESTS = 'int\todd_modifytoupper(void)\n{\n\treturn (0);\n}\n\nint\tmain(void)\n{\n\treturn (0);\n}\n';
+
+test('main.c (normExclude) のテスト用関数は、ブロックに入れない。サブディレクトリの main.c も同じ', async (t) => {
+  const { ctx, dir, cleanup } = sampleContext('proto-ok', { normExclude: ['main.c'] });
+  fs.writeFileSync(path.join(dir, 'main.c'), MAIN_WITH_TESTS);
+  fs.writeFileSync(path.join(dir, 'src', 'main.c'), MAIN_WITH_TESTS.replace('odd_modifytoupper', 'odd_sub'));
+  const r = await syncAuto(ctx);
+  if (r.status === 'skip') return t.skip('ctags が無い');
+  assert.equal(r.status, 'updated', r.message);
+  const h = read(headerOf(dir));
+  assert.ok(!h.includes('odd_modifytoupper') && !h.includes('odd_sub'), 'main.c の関数は入らない');
+  assert.ok(names(blockOf(h)).includes('ft_strlen'), '他のファイルの関数は入る');
+  cleanup();
+});
+
+test('normExclude を空にすれば、main.c の関数も入る', async (t) => {
+  const { ctx, dir, cleanup } = sampleContext('proto-ok', { normExclude: [] });
+  fs.writeFileSync(path.join(dir, 'main.c'), MAIN_WITH_TESTS);
+  const r = await syncAuto(ctx);
+  if (r.status === 'skip') return t.skip('ctags が無い');
+  assert.ok(names(blockOf(read(headerOf(dir)))).includes('odd_modifytoupper'));
+  cleanup();
+});
+
+test('全ての .c が normExclude で除外されていれば、理由を言ってエラー (ヘッダは触らない)', async (t) => {
+  const { ctx, dir, cleanup } = sampleContext('proto-ok', { normExclude: ['*.c'] });
+  const before = read(headerOf(dir));
+  const plan = await planSync(ctx);
+  if (plan.kind === 'skip') return t.skip('ctags が無い');
+  assert.equal(plan.kind, 'error');
+  assert.match((plan as { reason: string }).reason, /normExclude で除外/);
+  assert.equal(read(headerOf(dir)), before);
+  cleanup();
+});
+
 test('既定は ON (DEFAULT_SETTINGS と package.json が一致)', () => {
   assert.equal(DEFAULT_SETTINGS.protoSkipExisting, true);
   const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')) as {

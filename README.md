@@ -43,9 +43,9 @@ F5 で CodeLLDB のデバッガを起動でき、**事前チェックに落ち�
 
 ### norminette / 整形の対象から外すファイル (既定: `main.c`)
 
-`c42check.normExclude` に一致するファイルは、**norminette の検査と、c_formatter_42 の整形の対象から外れます**。既定は `["main.c"]` です (テスト用の `main.c` など、norm に合わせたくないファイル向け)。
+`c42check.normExclude` に一致するファイルは、**norminette の検査と、c_formatter_42 の整形の対象から外れ、ヘッダへのプロトタイプ同期でも関数を拾いません**。既定は `["main.c"]` です (テスト用関数を書いた `main.c` など、norm に合わせたくない・ヘッダに載せたくないファイル向け)。
 
-- **外れるのは、この 2 つだけです。** 警告強化ビルド、clang-tidy、`gcc -fanalyzer`、scan-build、sanitizer、valgrind は、除外したファイルにも行われます。
+- **外れるのは、この 3 つだけです。** 警告強化ビルド、clang-tidy、`gcc -fanalyzer`、scan-build、sanitizer、valgrind は、除外したファイルにも行われます。
 - パターンの書き方: `/` を含まなければ**ファイル名**に一致 (どの深さでも。`main.c` は `src/main.c` にも一致)、含めば**ルートからの相対パス**に一致 (`/main.c` は直下だけ)、`/` で終われば**そのディレクトリ以下の全て** (`tests/`)。`*` は `/` 以外の任意の文字列、`**` は `/` も含む任意の文字列。
 - 例: `"c42check.normExclude": ["main.c", "tests/", "*_test.c"]`。空にすると、全ての `.c` / `.h` が対象です。
 - 対象が全て除外されたときは、失敗ではなく skip になります。
@@ -299,7 +299,7 @@ Node.js 22 以上が必要です (`.nvmrc`、`package.json` の `engines`)。
 npm ci
 npm run typecheck   # tsc --noEmit
 npm run build       # esbuild で dist/extension.js に bundle
-npm test            # 147 件。実際のツール (norminette / clang / valgrind など) があれば使い、無ければ該当項目は skip
+npm test            # 150 件。実際のツール (norminette / clang / valgrind など) があれば使い、無ければ該当項目は skip
 npm run package     # .vsix を作る
 ```
 
