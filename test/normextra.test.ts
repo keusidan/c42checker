@@ -493,3 +493,48 @@ test('step: 段階 1 の fail は段階 2 を止める (normExtra の error も�
   cleanup();
 });
 
+
+/* ───────────── 引数名を検査するか (オプション) ───────────── */
+
+const MEMCMP = 'int\tft_memcmp(const void *s1, const void *s2, size_t n)\n{\n\tunsigned char\t*p1;\n\n\tp1 = (unsigned char *)s1;\n\treturn (*p1 - *(unsigned char *)s2 + (int)n);\n}\n';
+
+test('checkParameterNames: 既定は検査する。false なら引数名 (s1 / s2) は検査しないが、ローカル変数 (p1) は検査する', async () => {
+  const names = (fs_: Finding[]) => of(fs_, 'bad-variable-name').map((x) => /(引数|変数)名 (\w+)/.exec(x.message)!.slice(1, 3).join(':')).sort();
+  const on = await run({ 'ft_memcmp.c': MEMCMP }, { header: true });
+  assert.deepEqual(names(on.findings), ['変数:p1', '引数:s1', '引数:s2'], 'ユーザーの例: s1 / s2 が引数として検出される');
+  clean(on);
+
+  const dir = tmp();
+  const f = path.join(dir, 'ft_memcmp.c');
+  fs.writeFileSync(f, FIELDS('ft_memcmp.c') + MEMCMP);
+  const base = { root: dir, files: [f], allSources: [f], allHeaders: [], includeDirs: [dir], disabled: new Set<string>(), shortNames: new Set(DEFAULT_SETTINGS.normExtraShortNames) };
+  assert.deepEqual(names(normExtra({ ...base, checkParameterNames: true })), ['変数:p1', '引数:s1', '引数:s2']);
+  assert.deepEqual(names(normExtra(base)), ['変数:p1', '引数:s1', '引数:s2'], '未指定は true');
+  assert.deepEqual(names(normExtra({ ...base, checkParameterNames: false })), ['変数:p1'], '引数は検査しない。ローカル変数は引き続き検査する');
+  assert.deepEqual(names(normExtra({ ...base, checkParameterNames: false, disabled: new Set(['bad-variable-name']) })), [], '規則ごと disable すれば、変数も検査しない');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('設定 normExtra.checkParameterNames: 既定 true (DEFAULT_SETTINGS と package.json が一致)。step に反映される', async () => {
+  assert.equal(DEFAULT_SETTINGS.normExtraCheckParameterNames, true);
+  const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')) as {
+    contributes: { configuration: { properties: Record<string, { type: string; default: unknown }> } };
+  };
+  const prop = pkg.contributes.configuration.properties['c42check.normExtra.checkParameterNames'];
+  assert.equal(prop.type, 'boolean');
+  assert.equal(prop.default, true);
+
+  const mk = (over: Partial<typeof DEFAULT_SETTINGS>) => {
+    const { ctx, dir, cleanup } = sampleContext('ok', over);
+    fs.writeFileSync(path.join(dir, 'str_utils.c'), fs.readFileSync(path.join(dir, 'str_utils.c'), 'utf8') + '\nint\tft_cmp(const char *s1, const char *s2)\n{\n\treturn (s1 == s2);\n}\n');
+    return { ctx, cleanup };
+  };
+  const a = mk({});
+  const sa = (await runPipeline(a.ctx, { selected: ['normExtra'] })).results.find((x) => x.id === 'normExtra')!;
+  assert.deepEqual(sa.diags.filter((d) => /\[bad-variable-name\]/.test(d.message)).map((d) => /名 (\w+)/.exec(d.message)![1]).sort(), ['s1', 's2']);
+  a.cleanup();
+  const b = mk({ normExtraCheckParameterNames: false });
+  const sb = (await runPipeline(b.ctx, { selected: ['normExtra'] })).results.find((x) => x.id === 'normExtra')!;
+  assert.deepEqual(sb.diags.filter((d) => /\[bad-variable-name\]/.test(d.message)), []);
+  b.cleanup();
+});

@@ -81,6 +81,8 @@ export interface Settings {
   normExtraRemoveUnusedIncludes: boolean;
   /** true なら、include の二重指定 (同じヘッダを 2 回 / ヘッダとソースの両方で include) も検出する */
   normExtraDetectDuplicateIncludes: boolean;
+  /** false なら、関数の引数名を bad-variable-name の対象にしない (ローカル変数は引き続き検査する) */
+  normExtraCheckParameterNames: boolean;
   /** normExtra の bad-variable-name で、許可する 1 文字の変数名 */
   normExtraShortNames: string[];
   compileCflags: string[];
@@ -134,6 +136,7 @@ export const DEFAULT_SETTINGS: Settings = {
   normExtraReviewAsFail: false,
   normExtraRemoveUnusedIncludes: false,
   normExtraDetectDuplicateIncludes: false,
+  normExtraCheckParameterNames: true,
   normExtraShortNames: ['i', 'j', 'k', 'c', 'n', 's'],
   compileCflags: [],
   compileLdflags: [],

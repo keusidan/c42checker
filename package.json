@@ -616,6 +616,11 @@
             "s"
           ],
           "markdownDescription": "`bad-variable-name` で、**使ってよい 1 文字の変数名**。Norm は `a, b, c` のような名前を bad function の例に挙げていますが、`i` (添字) などは評価でも通常は問題になりません。"
+        },
+        "c42check.normExtra.checkParameterNames": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "`bad-variable-name` (名前が explicit / mnemonic か) の検査で、**関数の引数名**も検査するか。既定は `true`。\n\n- `false` にすると、引数名 (`s1` `s2` `a` `b` など) は検査しません。**関数の中のローカル変数は、引き続き検査します。**\n- 引数名は、`ft_memcmp(const void *s1, const void *s2, size_t n)` のように、標準関数と同じ名前にすることが多いので、誤検知が気になるときに使います。\n- 検査する場合に許可する 1 文字の名前は `normExtra.shortNames`。変数名の検査そのものを止めるには、`normExtra.disable` に `bad-variable-name` を入れます。"
         }
       }
     }

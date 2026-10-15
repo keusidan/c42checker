@@ -107,6 +107,7 @@ OFF のままなら、ヘッダとソースの両方に書いてあっても、�
 つまり、この検査が通っても **`(*)` 規則を全て満たしたことにはなりません**。評価で見られる項目のうち、機械で拾える分を先に潰すためのものです。
 
 **誤検知への対処**: 判定は、誤検知より見逃しを選ぶ側 (ヘッダが複数の標準ヘッダの名前を共有するときは「使っている」とみなす、など) に倒していますが、完全ではありません。
+**関数の引数名を検査するか**は `c42check.normExtra.checkParameterNames` (既定: `true`) で選べます。`false` にすると、`ft_memcmp(const void *s1, const void *s2, size_t n)` の `s1` / `s2` のような引数名は検査しません (**関数の中のローカル変数は、引き続き検査します**)。変数名の検査そのものを止めるには、`c42check.normExtra.disable` に `bad-variable-name` を入れます。
 続く規則だけを、`c42check.normExtra.disable` (規則の id の配列) で外せます。使ってよい 1 文字の変数名は `c42check.normExtra.shortNames` (既定: `i j k c n s`) です。`c42check.normExclude` (既定: `main.c`) に一致するファイルは、この検査の対象外です。
 
 **Makefile (Norm III.11)** は、プロジェクトの**コピー**で実際に `make` を動かして検査します (元のファイルは変えません)。
@@ -387,7 +388,7 @@ Node.js 22 以上が必要です (`.nvmrc`、`package.json` の `engines`)。
 npm ci
 npm run typecheck   # tsc --noEmit
 npm run build       # esbuild で dist/extension.js に bundle
-npm test            # 229 件。実際のツール (norminette / clang / valgrind など) があれば使い、無ければ該当項目は skip
+npm test            # 231 件。実際のツール (norminette / clang / valgrind など) があれば使い、無ければ該当項目は skip
 npm run package     # .vsix を作る
 ```
 

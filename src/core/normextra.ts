@@ -88,6 +88,8 @@ export interface NormExtraInput {
   /** ctags で取り出したヘッダごとの名前。undefined なら、プロジェクト内のヘッダの include は判定しない */
   headerSymbols?: Map<string, Set<string>>;
   /** コンパイラで include の使用を判定した結果 (includecheck.ts)。judged のファイルは、名前の表による判定をしない */
+  /** false なら、関数の引数名は bad-variable-name の対象にしない (未指定は true)。ローカル変数は引き続き検査する */
+  checkParameterNames?: boolean;
   /** true なら、include の二重指定 (duplicate-include) も検出する */
   detectDuplicateIncludes?: boolean;
   includeVerdicts?: { judged: ReadonlySet<string>; findings: readonly Finding[] };
@@ -342,13 +344,13 @@ function badVariable(name: string, shortNames: ReadonlySet<string>): string | un
   return undefined;
 }
 
-function checkVariableNames(p: Parsed, out: Finding[], shortNames: ReadonlySet<string>): void {
+function checkVariableNames(p: Parsed, out: Finding[], shortNames: ReadonlySet<string>, checkParameters: boolean): void {
   if (p.isHeader) return;
   const lineAt = (offset: number) => p.structure.slice(0, offset).split('\n').length;
   for (const f of findFunctions(p.structure)) {
     const bodyLine = lineAt(f.bodyStart);
     const names = [
-      ...parameterNames(f.params).map((name) => ({ name, line: f.line, kind: '引数' })),
+      ...(checkParameters ? parameterNames(f.params).map((name) => ({ name, line: f.line, kind: '引数' })) : []),
       ...localNames(p.structure.slice(f.bodyStart, f.bodyEnd)).map((v) => ({ name: v.name, line: bodyLine + v.line, kind: '変数' })),
     ];
     for (const v of names) {
@@ -584,7 +586,7 @@ export function normExtra(input: NormExtraInput): Finding[] {
       out.push(...tmp.filter((f) => on(f.rule)));
     }
     if (on('bad-function-name')) checkFunctionNames(p, out);
-    if (on('bad-variable-name')) checkVariableNames(p, out, input.shortNames);
+    if (on('bad-variable-name')) checkVariableNames(p, out, input.shortNames, input.checkParameterNames !== false);
     if (on('bad-file-name')) checkFileName(p, out);
   }
   return out.sort((a, b) => (a.file === b.file ? a.line - b.line : a.file.localeCompare(b.file)));

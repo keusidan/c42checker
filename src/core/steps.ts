@@ -291,6 +291,7 @@ const normExtraStep: StepDef = {
       shortNames: new Set(ctx.settings.normExtraShortNames),
       headerSymbols,
       detectDuplicateIncludes: ctx.settings.normExtraDetectDuplicateIncludes,
+      checkParameterNames: ctx.settings.normExtraCheckParameterNames,
     };
     // 使っていない include は、コンパイラで確かめる (include を 1 行ずつ外して、診断が増えるかを見る)。clang が無い / 判定できないファイルは、名前の表で判定する
     let includeVerdicts: { judged: ReadonlySet<string>; findings: readonly Finding[] } | undefined;
