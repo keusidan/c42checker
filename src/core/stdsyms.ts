@@ -89,3 +89,13 @@ export const STD_CONSTANTS: ReadonlySet<string> = new Set(
 export function isKnownSystemHeader(name: string): boolean {
   return Object.prototype.hasOwnProperty.call(STD_HEADERS, name);
 }
+
+/**
+ * 複数の標準ヘッダが提供する名前 (size_t、NULL、uint8_t など)。これだけを使っているファイルでは、どのヘッダが必要かを名前からは決められないので、
+ * 「使っている」の証拠にしない (= コンパイラで確かめる)。
+ */
+export const WEAK_SYMBOLS: ReadonlySet<string> = (() => {
+  const count = new Map<string, number>();
+  for (const list of Object.values(STD_HEADERS)) for (const n of new Set(list)) count.set(n, (count.get(n) ?? 0) + 1);
+  return new Set([...count].filter(([, c]) => c >= 2).map(([n]) => n));
+})();

@@ -79,6 +79,8 @@ export interface Settings {
   normExtraReviewAsFail: boolean;
   /** true なら、コンパイラで未使用と確かめた #include を、ファイルから削除する (.42check/include-backup/ に退避) */
   normExtraRemoveUnusedIncludes: boolean;
+  /** true なら、include の二重指定 (同じヘッダを 2 回 / ヘッダとソースの両方で include) も検出する */
+  normExtraDetectDuplicateIncludes: boolean;
   /** normExtra の bad-variable-name で、許可する 1 文字の変数名 */
   normExtraShortNames: string[];
   compileCflags: string[];
@@ -131,6 +133,7 @@ export const DEFAULT_SETTINGS: Settings = {
   normExtraDisable: [],
   normExtraReviewAsFail: false,
   normExtraRemoveUnusedIncludes: false,
+  normExtraDetectDuplicateIncludes: false,
   normExtraShortNames: ['i', 'j', 'k', 'c', 'n', 's'],
   compileCflags: [],
   compileLdflags: [],

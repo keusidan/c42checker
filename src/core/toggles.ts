@@ -71,4 +71,13 @@ export const TOGGLES: ToggleDef[] = [
     fromConfig: (v) => bool(v, false),
     toConfig: (checked) => checked,
   },
+  {
+    id: 'detectDuplicateIncludes',
+    label: 'include の二重指定を検出',
+    key: 'normExtra.detectDuplicateIncludes',
+    description: '同じヘッダを 2 回 include している、または include しているヘッダがすでに include しているものを、ソース側でも include している場合を error にする (Norm (*) 規則の検査の中)',
+    defaultValue: false,
+    fromConfig: (v) => bool(v, false),
+    toConfig: (checked) => checked,
+  },
 ];

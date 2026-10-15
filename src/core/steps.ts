@@ -8,7 +8,7 @@ import { exec } from './exec';
 import { checkMakefile, toDiags as makefileDiags } from './makefile';
 import { judgeIncludes } from './includecheck';
 import { applyRemovals, shiftLine } from './includefix';
-import { listIncludes, MANUAL_ITEMS, normExtra, resolveLocal, RULES, type Finding } from './normextra';
+import { listIncludes, MANUAL_ITEMS, normExtra, resolveLocal, RULES, suspectIncludes, type Finding } from './normextra';
 import {
   dedupe,
   parseCbmc,
@@ -281,6 +281,17 @@ const normExtraStep: StepDef = {
       log += `(universal-ctags が無いため、プロジェクト内のヘッダの include の判定は行いません: ${ct.reason})\n`;
     }
     const disabled = new Set(ctx.settings.normExtraDisable);
+    const base = {
+      root: ctx.root,
+      files: normTargets(ctx),
+      allSources: ctx.sources,
+      allHeaders: ctx.headers,
+      includeDirs: ctx.includeDirs,
+      disabled,
+      shortNames: new Set(ctx.settings.normExtraShortNames),
+      headerSymbols,
+      detectDuplicateIncludes: ctx.settings.normExtraDetectDuplicateIncludes,
+    };
     // 使っていない include は、コンパイラで確かめる (include を 1 行ずつ外して、診断が増えるかを見る)。clang が無い / 判定できないファイルは、名前の表で判定する
     let includeVerdicts: { judged: ReadonlySet<string>; findings: readonly Finding[] } | undefined;
     let removedIncludes = 0;
@@ -309,10 +320,12 @@ const normExtraStep: StepDef = {
         }
         return [...found];
       };
+      // 名前の表 / ctags で「使っている」と分かる include はコンパイルしない (コンパイルするのは、使っていないように見えるものと、表にないヘッダだけ)
+      const suspects = suspectIncludes(base);
       const r = await judgeIncludes({
         ctx,
-        files: normTargets(ctx),
-        includesOf: listIncludes,
+        files: base.files,
+        includesOf: (file) => suspects.get(file) ?? [],
         includersOf,
         flags: [...incFlags(ctx), ...extraCflags(ctx)],
       });
@@ -325,17 +338,7 @@ const normExtraStep: StepDef = {
         includeVerdicts = { judged: r.judged, findings: fixed.remaining };
       }
     }
-    const findings = normExtra({
-      includeVerdicts,
-      root: ctx.root,
-      files: normTargets(ctx),
-      allSources: ctx.sources,
-      allHeaders: ctx.headers,
-      includeDirs: ctx.includeDirs,
-      disabled,
-      shortNames: new Set(ctx.settings.normExtraShortNames),
-      headerSymbols,
-    });
+    const findings = normExtra({ ...base, includeVerdicts });
     const errors = findings.filter((f) => f.strength === 'error');
     const reviews = findings.filter((f) => f.strength === 'review');
     const diags: Diag[] = findings.map((f: Finding) => ({

@@ -11,6 +11,7 @@
  * 取りこぼし: マクロの有無で挙動が変わるだけ (#ifdef) の include は、外しても診断が変わらないので、未使用と判定される。
  */
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import { exec } from './exec';
 import type { Finding, IncludeRef } from './normextra';
@@ -64,11 +65,29 @@ const blankLines = (text: string, lines: ReadonlySet<number>): string =>
     .map((l, i) => (lines.has(i + 1) ? '' : l))
     .join('\n');
 
+/** 同時に走らせるコンパイラの数 */
+function parallelism(): number {
+  const n = typeof os.availableParallelism === 'function' ? os.availableParallelism() : os.cpus().length;
+  return Math.max(1, Math.min(8, n));
+}
+
 export async function judgeIncludes(input: IncludeCheckInput): Promise<IncludeCheckResult> {
   const { ctx } = input;
   const result: IncludeCheckResult = { judged: new Set(), findings: [], log: '' };
   const cc = ctx.tools.cc;
   if (!cc) return { ...result, log: '(clang が無いため、コンパイラによる include の判定は行いません)\n' };
+
+  // コンパイラで確かめる必要があるのは、名前の表 / ctags では「使っているか分からない・使っていない」と見えた include だけ。
+  // 使っていると分かる include は、コンパイルしない (ほとんどの include はこちら)
+  const suspects = new Map<string, IncludeRef[]>();
+  for (const file of input.files) {
+    const cands = input.includesOf(file).filter((i) => !i.justified);
+    if (cands.length === 0) result.judged.add(file);
+    else suspects.set(file, cands);
+  }
+  if (suspects.size === 0) {
+    return { ...result, log: `(include の判定: 全ての include が使われているのを、名前から確認できたので、コンパイルは不要でした)\n` };
+  }
 
   const work = path.join(ctx.workDir, 'include-check');
   fs.rmSync(work, { recursive: true, force: true });
@@ -76,13 +95,12 @@ export async function judgeIncludes(input: IncludeCheckInput): Promise<IncludeCh
   try {
     copyProject(ctx.root, copyRoot, ctx.settings.workDirMaxMB * 1048576);
   } catch (e) {
-    return { ...result, log: `(プロジェクトをコピーできなかったため、コンパイラによる include の判定は行いません: ${(e as Error).message})\n` };
+    return { judged: new Set(), findings: [], log: `(プロジェクトをコピーできなかったため、コンパイラによる include の判定は行いません: ${(e as Error).message})\n` };
   }
   const toCopy = (p: string) => p.split(ctx.root).join(copyRoot); // 元のプロジェクトの絶対パスを、コピーのものに直す
   const flags = input.flags.map(toCopy);
   const timeoutMs = ctx.settings.staticTimeoutSec * 1000;
   const deadline = Date.now() + timeoutMs * 3;
-  const stub = path.join(copyRoot, '.c42check-stub.c');
   let compiles = 0;
   let aborted: string | undefined;
 
@@ -93,106 +111,126 @@ export async function judgeIncludes(input: IncludeCheckInput): Promise<IncludeCh
     return parseDiags(r.output.split(copyRoot).join(''));
   };
 
-  try {
-    for (const file of input.files) {
-      if (aborted || Date.now() > deadline) {
-        aborted ??= '時間切れ';
-        break;
-      }
-      const cands = input.includesOf(file).filter((i) => !i.justified);
-      const rel = path.relative(ctx.root, file);
-      if (cands.length === 0) {
-        result.judged.add(file);
-        continue;
-      }
-      const copyFile = path.join(copyRoot, rel);
-      const original = fs.readFileSync(copyFile, 'utf8');
-      const units = (): string[] => {
-        if (!file.endsWith('.h')) return [copyFile];
-        fs.writeFileSync(stub, `#include "${copyFile}"\n`);
-        return [stub, ...input.includersOf(file).map((f) => path.join(copyRoot, path.relative(ctx.root, f)))];
-      };
-      const run = async (remove: ReadonlySet<number>): Promise<{ diags: Diags; fatal: boolean }> => {
-        const merged: Diags = new Map();
-        let fatal = false;
-        if (remove.size > 0) fs.writeFileSync(copyFile, blankLines(original, remove));
-        try {
-          for (const u of units()) {
-            const r = await compile(u);
-            fatal ||= r.fatal;
-            for (const [k, n] of r.diags) merged.set(k, (merged.get(k) ?? 0) + n);
-          }
-        } finally {
-          if (remove.size > 0) fs.writeFileSync(copyFile, original);
-        }
-        return { diags: merged, fatal };
-      };
-
-      const base = await run(new Set());
-      if (aborted) break;
-      if (base.fatal) {
-        result.log += `${rel}: 外す前の構文チェックが fatal error で止まるため、コンパイラでは判定しません (表による判定に切り替えます)\n`;
-        continue;
-      }
-      const ok = async (remove: Set<number>): Promise<boolean> => !hasNew(base.diags, (await run(remove)).diags);
-
-      // 1 行ずつ外して、診断が増えないもの = 単独では外せる include
-      const removable: IncludeRef[] = [];
-      for (const c of cands) if (await ok(new Set([c.line]))) removable.push(c);
-      if (aborted) break;
-      if (removable.length === 0) {
-        result.judged.add(file);
-        continue;
-      }
-      // 外せるものを全部まとめて外しても診断が増えなければ、どれも本当に未使用。
-      // 増えるなら、同じ名前を提供する include が重なっている (どれか 1 つは必要)
-      const all = new Set(removable.map((c) => c.line));
-      const unused = new Set<number>(removable.map((c) => c.line));
-      const ambiguous = new Set<number>();
-      if (removable.length > 1 && !(await ok(all))) {
-        // 先頭から順に外していき、外せなくなったもの (blocked) と、それと重なっているもの (外し済みのうち、戻すと blocked が外せるもの) を ambiguous にする
-        const removed = new Set<number>();
-        const blocked: number[] = [];
-        for (const c of removable) {
-          const next = new Set([...removed, c.line]);
-          if (await ok(next)) removed.add(c.line);
-          else blocked.push(c.line);
-        }
-        if (aborted) break;
-        for (const b of blocked) ambiguous.add(b);
-        for (const g of removed) {
-          const without = new Set([...removed, ...blocked].filter((l) => l !== g));
-          if (blocked.length > 0 && (await ok(without))) ambiguous.add(g);
-        }
-        for (const l of ambiguous) unused.delete(l);
-      }
-      if (aborted) break;
-      for (const c of removable) {
-        const label = c.system ? `<${c.name}>` : `"${c.name}"`;
-        if (unused.has(c.line)) {
-          result.findings.push({
-            file,
-            line: c.line,
-            rule: 'unused-include',
-            strength: 'error',
-            message: `#include ${label} が使われていません (この行を外しても、コンパイルの診断が増えません)。使っていないヘッダの include は禁止です。理由があるなら、その行にコメントで書いてください (Norm III.5)`,
-          });
-        } else {
-          const partners = removable.filter((o) => o.line !== c.line && ambiguous.has(o.line)).map((o) => (o.system ? `<${o.name}>` : `"${o.name}"`));
-          result.findings.push({
-            file,
-            line: c.line,
-            rule: 'unused-include',
-            strength: 'review',
-            message: `#include ${label} は、外してもコンパイルが通ります。ただし ${partners.join(', ') || '別の include'} と提供する名前が重なっていて、どれか 1 つは必要です。使う名前を提供する方だけ残してください (Norm III.5)`,
-          });
-        }
-      }
-      result.judged.add(file);
+  let stubSeq = 0;
+  const processFile = async (file: string, cands: IncludeRef[]): Promise<void> => {
+    if (aborted || Date.now() > deadline) {
+      aborted ??= '時間切れ';
+      return;
     }
+    const rel = path.relative(ctx.root, file);
+    const copyFile = path.join(copyRoot, rel);
+    const original = fs.readFileSync(copyFile, 'utf8');
+    // 判定に使うコンパイルの単位。.c はそのファイル自身。.h は、そのヘッダだけを include する小さな .c (先頭) と、そのヘッダを使う .c
+    const units: string[] = [];
+    if (file.endsWith('.h')) {
+      const stub = path.join(copyRoot, `.c42check-stub-${stubSeq++}.c`);
+      fs.writeFileSync(stub, `#include "${copyFile}"\n`);
+      units.push(stub, ...input.includersOf(file).map((f) => path.join(copyRoot, path.relative(ctx.root, f))));
+    } else units.push(copyFile);
+
+    // 外す前の診断は、単位ごとに、必要になったときに 1 度だけ取る (先頭の単位で「必要」と分かれば、他の単位はコンパイルしない)
+    const baseOf = new Map<string, { diags: Diags; fatal: boolean }>();
+    const baseline = async (unit: string) => {
+      if (!baseOf.has(unit)) baseOf.set(unit, await compile(unit));
+      return baseOf.get(unit)!;
+    };
+    /** remove の行を外したとき、診断が増えないか (増えた単位が 1 つでもあれば、すぐ false) */
+    const ok = async (remove: Set<number>): Promise<boolean> => {
+      try {
+        for (const u of units) {
+          // 外す前の診断は、元のファイルのまま取る (単位ごとに 1 度だけ)
+          if (!baseOf.has(u)) {
+            fs.writeFileSync(copyFile, original);
+            await baseline(u);
+          }
+          fs.writeFileSync(copyFile, blankLines(original, remove));
+          const base = await baseline(u);
+          if (aborted) return false;
+          if (base.fatal) continue; // 外す前から fatal error の単位 (include 元の .c など) は、判定に使えない
+          if (hasNew(base.diags, (await compile(u)).diags)) return false;
+          if (aborted) return false;
+        }
+        return true;
+      } finally {
+        fs.writeFileSync(copyFile, original);
+      }
+    };
+
+    const first = await baseline(units[0]);
+    if (aborted) return;
+    if (first.fatal) {
+      result.log += `${rel}: 外す前の構文チェックが fatal error で止まるため、コンパイラでは判定しません (表による判定に切り替えます)\n`;
+      return;
+    }
+
+    // 1 行ずつ外して、診断が増えないもの = 単独では外せる include
+    const removable: IncludeRef[] = [];
+    for (const c of cands) if (await ok(new Set([c.line]))) removable.push(c);
+    if (aborted) return;
+    if (removable.length === 0) {
+      result.judged.add(file);
+      return;
+    }
+    // 外せるものを全部まとめて外しても診断が増えなければ、どれも本当に未使用。
+    // 増えるなら、同じ名前を提供する include が重なっている (どれか 1 つは必要)
+    const all = new Set(removable.map((c) => c.line));
+    const unused = new Set<number>(removable.map((c) => c.line));
+    const ambiguous = new Set<number>();
+    if (removable.length > 1 && !(await ok(all))) {
+      // 先頭から順に外していき、外せなくなったもの (blocked) と、それと重なっているもの (外し済みのうち、戻すと blocked が外せるもの) を ambiguous にする
+      const removed = new Set<number>();
+      const blocked: number[] = [];
+      for (const c of removable) {
+        const next = new Set([...removed, c.line]);
+        if (await ok(next)) removed.add(c.line);
+        else blocked.push(c.line);
+      }
+      if (aborted) return;
+      for (const b of blocked) ambiguous.add(b);
+      for (const g of removed) {
+        const without = new Set([...removed, ...blocked].filter((l) => l !== g));
+        if (blocked.length > 0 && (await ok(without))) ambiguous.add(g);
+      }
+      for (const l of ambiguous) unused.delete(l);
+    }
+    if (aborted) return;
+    for (const c of removable) {
+      const label = c.system ? `<${c.name}>` : `"${c.name}"`;
+      if (unused.has(c.line)) {
+        result.findings.push({
+          file,
+          line: c.line,
+          rule: 'unused-include',
+          strength: 'error',
+          message: `#include ${label} が使われていません (この行を外しても、コンパイルの診断が増えません)。使っていないヘッダの include は禁止です。理由があるなら、その行にコメントで書いてください (Norm III.5)`,
+        });
+      } else {
+        const partners = removable.filter((o) => o.line !== c.line && ambiguous.has(o.line)).map((o) => (o.system ? `<${o.name}>` : `"${o.name}"`));
+        result.findings.push({
+          file,
+          line: c.line,
+          rule: 'unused-include',
+          strength: 'review',
+          message: `#include ${label} は、外してもコンパイルが通ります。ただし ${partners.join(', ') || '別の include'} と提供する名前が重なっていて、どれか 1 つは必要です。使う名前を提供する方だけ残してください (Norm III.5)`,
+        });
+      }
+    }
+    result.judged.add(file);
+  };
+
+  try {
+    // .c は、それぞれ自分のコピーだけを書き換えるので、並列に判定できる。.h は他のファイルのコンパイルに影響するので、1 つずつ判定する
+    const cFiles = [...suspects].filter(([f]) => !f.endsWith('.h'));
+    const hFiles = [...suspects].filter(([f]) => f.endsWith('.h'));
+    const queue = [...cFiles];
+    const workers = Array.from({ length: Math.min(parallelism(), queue.length) }, async () => {
+      for (let next = queue.shift(); next; next = queue.shift()) await processFile(next[0], next[1]);
+    });
+    await Promise.all(workers);
+    for (const [file, cands] of hFiles) await processFile(file, cands);
   } finally {
     fs.rmSync(work, { recursive: true, force: true });
   }
-  result.log += `(コンパイラによる include の判定: 構文チェック ${compiles} 回${aborted ? `。${aborted}のため途中で打ち切り、残りは表による判定に切り替えました` : ''})\n`;
+  result.log += `(コンパイラによる include の判定: 確かめた include のあるファイル ${suspects.size} 件、構文チェック ${compiles} 回${aborted ? `。${aborted}のため途中で打ち切り、残りは表による判定に切り替えました` : ''})\n`;
   return result;
 }

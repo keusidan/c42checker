@@ -9,11 +9,12 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { findFunctions, identifiers, localNames, parameterNames, preprocessorLines, scanC, withoutPreprocessor, type CScan } from './cscan';
-import { isKnownSystemHeader, STD_CONSTANTS, STD_HEADERS } from './stdsyms';
+import { isKnownSystemHeader, STD_CONSTANTS, STD_HEADERS, WEAK_SYMBOLS } from './stdsyms';
 
 export type RuleId =
   | 'header-content'
   | 'unused-include'
+  | 'duplicate-include'
   | '42header'
   | 'define-bypass'
   | 'define-nonconst'
@@ -37,6 +38,7 @@ export interface RuleInfo {
 export const RULES: RuleInfo[] = [
   { id: 'header-content', norm: 'III.5', title: 'ヘッダに置けるのは include / 宣言 / define / プロトタイプ / マクロだけ (関数の定義を置かない)' },
   { id: 'unused-include', norm: 'III.5', title: '使っていないヘッダの include は禁止 (コメントで理由を書けば許される。clang で include を外して確かめる)' },
+  { id: 'duplicate-include', norm: 'III.5', title: 'include の二重指定 (同じヘッダを 2 回 / ヘッダとソースの両方で include)。設定 normExtra.detectDuplicateIncludes が ON のときだけ検査する' },
   { id: '42header', norm: 'III.6', title: '42 ヘッダの内容が最新 (作成者の login とメール、作成・更新の日時)' },
   { id: 'define-bypass', norm: 'III.7', title: 'norm を回避・難読化する #define の禁止 (制御構文・文・三項演算子・代入を隠したもの)' },
   { id: 'define-nonconst', norm: 'III.7', title: '#define はリテラルと定数の値にだけ使う' },
@@ -86,6 +88,8 @@ export interface NormExtraInput {
   /** ctags で取り出したヘッダごとの名前。undefined なら、プロジェクト内のヘッダの include は判定しない */
   headerSymbols?: Map<string, Set<string>>;
   /** コンパイラで include の使用を判定した結果 (includecheck.ts)。judged のファイルは、名前の表による判定をしない */
+  /** true なら、include の二重指定 (duplicate-include) も検出する */
+  detectDuplicateIncludes?: boolean;
   includeVerdicts?: { judged: ReadonlySet<string>; findings: readonly Finding[] };
   now?: Date;
 }
@@ -393,6 +397,31 @@ function symbolsOf(header: string, input: NormExtraInput, parsedCache: Map<strin
   return out;
 }
 
+type Usage = 'used' | 'unused' | 'unknown';
+
+/** 名前の表 / ctags で、その include が使われているかを判定する。分からなければ unknown (コンパイラに任せる) */
+function usageOf(p: Parsed, inc: IncludeRef, input: NormExtraInput, cache: Map<string, Parsed | undefined>, used: ReadonlySet<string>): Usage {
+  let provided: Set<string> | undefined;
+  if (inc.system) {
+    if (isKnownSystemHeader(inc.name)) provided = new Set(STD_HEADERS[inc.name]);
+  } else {
+    const target = resolveLocal(p.file, inc.name, input);
+    if (target && input.headerSymbols) provided = symbolsOf(target, input, cache);
+  }
+  if (!provided) return 'unknown'; // 表にない / ctags が無い / プロジェクト外
+  const hits = [...provided].filter((s) => used.has(s));
+  if (hits.length === 0) return 'unused';
+  // size_t / NULL のように、複数のヘッダが提供する名前だけを使っているときは、このヘッダが必要かは名前からは決められない
+  return inc.system && hits.every((s) => WEAK_SYMBOLS.has(s)) ? 'unknown' : 'used';
+}
+
+/** 判定に使う識別子: そのファイル自身 + (ヘッダなら) そのヘッダを include している全ファイル */
+function usedIdentifiers(p: Parsed, includers: Map<string, Parsed[]>): Set<string> {
+  const used = new Set(p.idents);
+  if (p.isHeader) for (const u of includers.get(p.file) ?? []) for (const id of u.idents) used.add(id);
+  return used;
+}
+
 function checkUnusedIncludes(
   p: Parsed,
   out: Finding[],
@@ -400,20 +429,10 @@ function checkUnusedIncludes(
   cache: Map<string, Parsed | undefined>,
   includers: Map<string, Parsed[]>,
 ): void {
-  // 判定に使う識別子: そのファイル自身 + (ヘッダなら) そのヘッダを include している全ファイル
-  const used = new Set(p.idents);
-  if (p.isHeader) for (const u of includers.get(p.file) ?? []) for (const id of u.idents) used.add(id);
+  const used = usedIdentifiers(p, includers);
   for (const inc of p.includes) {
     if (inc.justified) continue; // コメントで理由が書かれている (Norm III.5)
-    let provided: Set<string> | undefined;
-    if (inc.system) {
-      if (isKnownSystemHeader(inc.name)) provided = new Set(STD_HEADERS[inc.name]);
-    } else {
-      const target = resolveLocal(p.file, inc.name, input);
-      if (target && input.headerSymbols) provided = symbolsOf(target, input, cache);
-    }
-    if (!provided) continue; // 判定できない (表にない / ctags が無い / プロジェクト外)
-    if ([...provided].some((s) => used.has(s))) continue;
+    if (usageOf(p, inc, input, cache, used) !== 'unused') continue;
     out.push({
       file: p.file,
       line: inc.line,
@@ -424,20 +443,86 @@ function checkUnusedIncludes(
   }
 }
 
-export function normExtra(input: NormExtraInput): Finding[] {
-  const now = input.now ?? new Date();
-  const out: Finding[] = [];
+/** include の「同じもの」を表すキー。プロジェクトのヘッダは解決した絶対パス、標準ヘッダは名前 */
+function includeKey(from: string, inc: IncludeRef, input: NormExtraInput): string {
+  return inc.system ? `<${inc.name}>` : (resolveLocal(from, inc.name, input) ?? `"${inc.name}"`);
+}
+
+/**
+ * include の二重指定。次の 2 つを検出する (どちらも、コメントで理由を書いた include は除く):
+ *  - 同じファイルが、同じヘッダを 2 回以上 include している
+ *  - ファイルが X を include していて、同じファイルが include するプロジェクトのヘッダ (その先のヘッダも含む) が、すでに X を include している
+ * 後者は、後ろ (ソース側) の include を指す。
+ */
+function checkDuplicateIncludes(p: Parsed, out: Finding[], input: NormExtraInput, cache: Map<string, Parsed | undefined>): void {
+  const label = (inc: IncludeRef) => (inc.system ? `<${inc.name}>` : `"${inc.name}"`);
+  const seen = new Map<string, IncludeRef>();
+  // 他のヘッダ経由で既に include されているもの: キー → (ヘッダのパス, 行)
+  const viaHeader = new Map<string, { header: string; inc: IncludeRef }>();
+  const visited = new Set<string>([p.file]);
+  const walk = (file: string, parsed: Parsed | undefined): void => {
+    for (const inc of parsed?.includes ?? []) {
+      const key = includeKey(file, inc, input);
+      if (!viaHeader.has(key)) viaHeader.set(key, { header: file, inc });
+      if (!inc.system) {
+        const target = resolveLocal(file, inc.name, input);
+        if (target && !visited.has(target)) {
+          visited.add(target);
+          if (!cache.has(target)) cache.set(target, parseFile(target));
+          walk(target, cache.get(target));
+        }
+      }
+    }
+  };
+  for (const inc of p.includes) {
+    if (inc.system) continue;
+    const target = resolveLocal(p.file, inc.name, input);
+    if (target && !visited.has(target)) {
+      visited.add(target);
+      if (!cache.has(target)) cache.set(target, parseFile(target));
+      walk(target, cache.get(target));
+    }
+  }
+  for (const inc of p.includes) {
+    const key = includeKey(p.file, inc, input);
+    const first = seen.get(key);
+    if (first) {
+      if (!inc.justified) {
+        out.push({ file: p.file, line: inc.line, rule: 'duplicate-include', strength: 'error', message: `#include ${label(inc)} が、${first.line} 行目ですでに include されています (同じファイルの中で二重に書いています)` });
+      }
+      continue;
+    }
+    seen.set(key, inc);
+    const via = viaHeader.get(key);
+    if (via && !inc.justified) {
+      out.push({
+        file: p.file,
+        line: inc.line,
+        rule: 'duplicate-include',
+        strength: 'error',
+        message: `#include ${label(inc)} は、include している ${path.basename(via.header)} (${via.inc.line} 行目) がすでに include しています (ヘッダとソースで二重に書いています)。どちらか一方にします。理由があるなら、その行にコメントで書いてください`,
+      });
+    }
+  }
+}
+
+interface Analysis {
+  parse(file: string): Parsed | undefined;
+  cache: Map<string, Parsed | undefined>;
+  includers: Map<string, Parsed[]>;
+  projectMacros: Set<string>;
+}
+
+function analyze(input: NormExtraInput): Analysis {
   const cache = new Map<string, Parsed | undefined>();
   const parse = (f: string) => {
     if (!cache.has(f)) cache.set(f, parseFile(f));
     return cache.get(f);
   };
-
   // 「ヘッダ → それを include しているファイル」(ヘッダの include が、include 元で使われているかの判定用)
   const includers = new Map<string, Parsed[]>();
-  const everything = [...new Set([...input.allSources, ...input.allHeaders])];
   const projectMacros = new Set<string>();
-  for (const f of everything) {
+  for (const f of new Set([...input.allSources, ...input.allHeaders])) {
     const p = parse(f);
     if (!p) continue;
     for (const l of preprocessorLines(p.scan.codeWithStrings)) {
@@ -452,6 +537,30 @@ export function normExtra(input: NormExtraInput): Finding[] {
       if (target) includers.set(target, [...(includers.get(target) ?? []), p]);
     }
   }
+  return { parse, cache, includers, projectMacros };
+}
+
+/**
+ * コンパイラで確かめる必要のある include: 名前の表 / ctags で「使っている」と分かったものを除いた、残り
+ * (使っていないように見える include と、表にないヘッダの include)。ファイルごと。
+ * ほとんどの include は「使っている」と名前から分かるので、コンパイルの回数が大きく減る。
+ */
+export function suspectIncludes(input: NormExtraInput): Map<string, IncludeRef[]> {
+  const a = analyze(input);
+  const out = new Map<string, IncludeRef[]>();
+  for (const file of input.files) {
+    const p = a.parse(file);
+    if (!p) continue;
+    const used = usedIdentifiers(p, a.includers);
+    out.set(file, p.includes.filter((inc) => !inc.justified && usageOf(p, inc, input, a.cache, used) !== 'used'));
+  }
+  return out;
+}
+
+export function normExtra(input: NormExtraInput): Finding[] {
+  const now = input.now ?? new Date();
+  const out: Finding[] = [];
+  const { parse, cache, includers, projectMacros } = analyze(input);
 
   const on = (id: RuleId) => !input.disabled.has(id);
   for (const file of input.files) {
@@ -462,6 +571,7 @@ export function normExtra(input: NormExtraInput): Finding[] {
       if (input.includeVerdicts?.judged.has(file)) out.push(...input.includeVerdicts.findings.filter((f) => f.file === file));
       else checkUnusedIncludes(p, out, input, cache, includers);
     }
+    if (input.detectDuplicateIncludes && on('duplicate-include')) checkDuplicateIncludes(p, out, input, cache);
     if (on('42header')) check42Header(p, out, now);
     if (on('define-bypass') || on('define-nonconst') || on('define-function-like')) {
       const tmp: Finding[] = [];

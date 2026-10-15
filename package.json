@@ -571,6 +571,7 @@
             "enum": [
               "header-content",
               "unused-include",
+              "duplicate-include",
               "42header",
               "define-bypass",
               "define-nonconst",
@@ -595,6 +596,11 @@
           "type": "boolean",
           "default": false,
           "markdownDescription": "`true` にすると、Norm の (*) 規則の検査 (`normExtra`) の中で、**コンパイラで未使用と確かめた `#include` を、ファイルから削除**します (**ソースを書き換えます**)。既定は OFF。\n\n- 削除するのは、「その行を外しても `clang -fsyntax-only` の診断が増えない」と確かめたものだけです。提供する名前が重なる include (review)、コメントで理由を書いた include、名前の表による判定 (clang が無いときなど) のものは削除しません。\n- 削除の跡に空行が連続しないよう詰めます。\n- 削除した後にプロジェクト全体の構文チェックをやり直し、削除前は通っていたのに通らなくなったら、**全て元に戻します**。\n- エディタに未保存の変更があるファイルは、書き換えません。\n- 変更前の内容は `.42check/include-backup/` に退避されます。\n- `normExtra.disable` に `unused-include` を入れると、この削除もしません。"
+        },
+        "c42check.normExtra.detectDuplicateIncludes": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "`true` にすると、Norm (*) 規則の検査 (`normExtra`) で、**include の二重指定**を error として検出します。既定は OFF。\n\n- 同じファイルの中で、同じヘッダを 2 回以上 include している\n- ファイルが X を include していて、同じファイルが include するプロジェクトのヘッダ (その先のヘッダも含む) が、すでに X を include している (**ヘッダとソースの両方に書いている**)。ソース側の include を指します\n- コメントで理由を書いた include は除きます\n\nOFF のままなら、ヘッダとソースの両方に書いてあっても、使っていれば問題にしません (必要なものを自分のファイルに明示する書き方も、よく使われるため)。\n\n`normExtra.disable` に `duplicate-include` を入れても、検出されなくなります。"
         },
         "c42check.normExtra.shortNames": {
           "type": "array",

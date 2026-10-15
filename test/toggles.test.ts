@@ -27,7 +27,7 @@ const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'
   contributes: { configuration: { properties: Record<string, { default: unknown; type: string }> }; commands: { command: string }[] };
 };
 
-test('「設定」グループに、真偽値の設定 6 つが並ぶ (5 つは指定されたもの + 使っていない #include の削除)', () => {
+test('「設定」グループに、真偽値の設定 7 つが並ぶ (5 つは指定されたもの + include の削除と二重指定の検出)', () => {
   const t = tree();
   assert.deepEqual(
     settingItems(t).map((x) => x.item.label),
@@ -38,11 +38,12 @@ test('「設定」グループに、真偽値の設定 6 つが並ぶ (5 つは�
       '実行時 (段階 0) にプロトタイプを同期',
       '保存時にプロトタイプを同期',
       '使っていない #include を削除',
+      'include の二重指定を検出',
     ],
   );
 });
 
-test('既定: 6 つともすべて OFF (プロトタイプの同期は実行時・保存時とも OFF。ソースを書き換える設定は全て OFF)', () => {
+test('既定: 7 つともすべて OFF (プロトタイプの同期は実行時・保存時とも OFF。ソースを書き換える設定は全て OFF)', () => {
   const t = tree();
   assert.ok(settingItems(t).every((x) => x.item.checkboxState === U.Unchecked));
   assert.equal(DEFAULT_SETTINGS.protoSyncOnRun, false);
@@ -60,6 +61,7 @@ test('設定 → チェックボックス: settings.json の値の変更が、�
   state.config['c42check.proto.syncOnRun'] = true;
   state.config['c42check.proto.syncOnSave'] = true;
   state.config['c42check.normExtra.removeUnusedIncludes'] = true;
+  state.config['c42check.normExtra.detectDuplicateIncludes'] = true;
   assert.ok(settingItems(t).every((x) => x.item.checkboxState === U.Checked));
   state.config['c42check.failFast'] = 'stage';
   assert.equal(settingItems(t)[0].item.checkboxState, U.Unchecked, '"stage" は OFF');
@@ -74,6 +76,7 @@ test('チェックボックス → 設定: 対応するキーに書き込む (fa
   await t.onCheckbox([[items[3].node, U.Checked]]);
   await t.onCheckbox([[items[4].node, U.Checked]]);
   await t.onCheckbox([[items[5].node, U.Checked]]);
+  await t.onCheckbox([[items[6].node, U.Checked]]);
   assert.deepEqual(state.updates, [
     { key: 'c42check.failFast', value: 'step' },
     { key: 'c42check.debug.sanitizer', value: true },
@@ -81,6 +84,7 @@ test('チェックボックス → 設定: 対応するキーに書き込む (fa
     { key: 'c42check.proto.syncOnRun', value: true },
     { key: 'c42check.proto.syncOnSave', value: true },
     { key: 'c42check.normExtra.removeUnusedIncludes', value: true },
+    { key: 'c42check.normExtra.detectDuplicateIncludes', value: true },
   ]);
   await t.onCheckbox([[items[0].node, U.Unchecked]]);
   assert.deepEqual(state.updates.at(-1), { key: 'c42check.failFast', value: 'stage' });

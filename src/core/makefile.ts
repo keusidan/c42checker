@@ -90,16 +90,16 @@ export function checkMakefileText(text: string, makefileDir: string): MakefileFi
 }
 
 interface Snapshot {
-  files: Map<string, number>;
+  files: Map<string, bigint>;
 }
 
 function snapshot(dir: string): Snapshot {
-  const files = new Map<string, number>();
+  const files = new Map<string, bigint>();
   const walk = (d: string) => {
     for (const e of fs.readdirSync(d, { withFileTypes: true })) {
       const f = path.join(d, e.name);
       if (e.isDirectory()) walk(f);
-      else if (e.isFile()) files.set(path.relative(dir, f), fs.statSync(f).mtimeMs);
+      else if (e.isFile()) files.set(path.relative(dir, f), fs.statSync(f, { bigint: true }).mtimeNs);
     }
   };
   walk(dir);
@@ -155,7 +155,7 @@ export async function checkMakefile(ctx: Context, makefile: string): Promise<Mak
       return { findings, log };
     }
     const built = snapshot(cwd);
-    await sleep(1100); // 更新時刻の分解能より長く空ける (再ビルドされたファイルを見分けるため)
+    await sleep(150); // 更新時刻 (ナノ秒) がカーネルの時計の刻み (数 ms) より確実に進むだけ空ける。再ビルドされたファイルを見分けるため
     const second = await run([]);
     const after = snapshot(cwd);
     const changed = [...after.files].filter(([f, t]) => built.files.get(f) !== t).map(([f]) => f);
