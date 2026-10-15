@@ -78,6 +78,16 @@ Norm v4.1 の冒頭 (Chapter I Foreword) によると、`(*)` が付いた規則
 - **取りこぼし**: `#ifdef` で使うマクロだけを提供する include は、外しても診断が変わらないので、未使用と判定されます。理由があるなら、その行にコメントで書いてください (コメントのある include は判定しません)。
 - include の数だけ構文チェックを走らせます (`c42check.staticTimeoutSec` の 3 倍で打ち切り、残りは名前の表で判定します)。
 
+**使っていない include を削除する (オプション、既定 OFF)**: `c42check.normExtra.removeUnusedIncludes` を `true` にする (View の「設定」グループの「使っていない #include を削除」) と、検査のときに、**コンパイラで未使用と確かめた `#include` をファイルから削除**します。ソースを書き換えるので、既定は OFF です。
+
+- 削除するのは、上の方法で「外しても診断が増えない」と確かめた include (error) だけです。**提供する名前が重なる include (review)、コメントで理由を書いた include、clang が無いときなどの名前の表による判定のものは、削除しません。**
+- include を全部消した跡に、空行が連続しないよう詰めます (Norm: 連続する空行は禁止)。
+- 削除の前後で、プロジェクト全体の構文チェックをやり直します。**削除前は通っていたのに通らなくなったら、全て元に戻します** (その場合、未使用の include は error のまま残ります)。
+- エディタに未保存の変更があるファイルは、書き換えません (error のまま残ります)。保存してから、もう一度実行してください。
+- 変更前の内容は `.42check/include-backup/` に退避されます (次の実行で消えます)。Git で管理していれば、`git diff` / `git checkout` でも戻せます。
+- 削除は、ディスク上のファイルを書き換えるだけです。42 ヘッダの `Updated:` は、エディタで保存したときのようには更新されません。
+- `c42check.normExtra.disable` に `unused-include` を入れていれば、削除もしません。
+
 **機械では判定できない項目は、毎回ログの末尾にチェックリストで出します** (`[ ] III.1 (*) …`)。たとえば「名前が英語として読める」「標準ライブラリのマクロが課題で許可された範囲か」「carryall / bad function が無い」「42 ヘッダが保存のたびに更新されている」は、人が見るしかありません。
 つまり、この検査が通っても **`(*)` 規則を全て満たしたことにはなりません**。評価で見られる項目のうち、機械で拾える分を先に潰すためのものです。
 
@@ -196,7 +206,7 @@ sanitizer は互いに併用できないため、View の段階 2 に**別々の
 git clone https://github.com/keusidan/c42checker.git
 cd c42checker
 npm ci
-npm run package                      # c42checker-0.1.0.vsix ができる (約 68KB)
+npm run package                      # c42checker-0.1.0.vsix ができる (約 69KB)
 
 # 校舎 (sudo 不要。.vsix を Drive などで持ってくる):
 code --install-extension c42checker-0.1.0.vsix
@@ -234,8 +244,8 @@ code --install-extension llvm-vs-code-extensions.vscode-clangd
 
 ### 設定のチェックボックス (View の「設定」グループ)
 
-次の 5 つを、settings.json を開かずに ON / OFF できます。状態は**ワークスペースの settings.json の対応キーと双方向に同期**します
-(View で変えると settings.json が書き換わり、settings.json を直接編集すると View のチェックが追従します)。**5 つとも既定は OFF** です。
+次の 6 つを、settings.json を開かずに ON / OFF できます。状態は**ワークスペースの settings.json の対応キーと双方向に同期**します
+(View で変えると settings.json が書き換わり、settings.json を直接編集すると View のチェックが追従します)。**6 つとも既定は OFF** です。
 
 | チェックボックス | 対応する設定キー |
 |---|---|
@@ -244,6 +254,7 @@ code --install-extension llvm-vs-code-extensions.vscode-clangd
 | Makefile の check ターゲットを使う | `c42check.useMakeCheckTarget` |
 | 実行時 (段階 0) にプロトタイプを同期 | `c42check.proto.syncOnRun` |
 | 保存時にプロトタイプを同期 | `c42check.proto.syncOnSave` |
+| 使っていない #include を削除 | `c42check.normExtra.removeUnusedIncludes` |
 
 ### ヘッダにプロトタイプを反映
 
@@ -356,7 +367,7 @@ Node.js 22 以上が必要です (`.nvmrc`、`package.json` の `engines`)。
 npm ci
 npm run typecheck   # tsc --noEmit
 npm run build       # esbuild で dist/extension.js に bundle
-npm test            # 194 件。実際のツール (norminette / clang / valgrind など) があれば使い、無ければ該当項目は skip
+npm test            # 207 件。実際のツール (norminette / clang / valgrind など) があれば使い、無ければ該当項目は skip
 npm run package     # .vsix を作る
 ```
 

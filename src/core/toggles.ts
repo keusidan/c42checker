@@ -62,4 +62,13 @@ export const TOGGLES: ToggleDef[] = [
     fromConfig: (v) => bool(v, false),
     toConfig: (checked) => checked,
   },
+  {
+    id: 'removeUnusedIncludes',
+    label: '使っていない #include を削除',
+    key: 'normExtra.removeUnusedIncludes',
+    description: '実行時 (段階 1) に、コンパイラで未使用と確かめた #include をファイルから削除する (ソースを書き換える。変更前は .42check/include-backup/ に退避)',
+    defaultValue: false,
+    fromConfig: (v) => bool(v, false),
+    toConfig: (checked) => checked,
+  },
 ];

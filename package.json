@@ -591,6 +591,11 @@
           "default": false,
           "markdownDescription": "`true` にすると、Norm の (*) 規則の検査 (`normExtra`) で **review (疑わしいだけで、人の目で確かめるもの)** と判定されたものも fail にします。既定 (`false`) では、review は Problems に warning として出るだけで、fail にはなりません。error (規則の文面から機械的に決まるもの) は、この設定に関係なく fail です。"
         },
+        "c42check.normExtra.removeUnusedIncludes": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "`true` にすると、Norm の (*) 規則の検査 (`normExtra`) の中で、**コンパイラで未使用と確かめた `#include` を、ファイルから削除**します (**ソースを書き換えます**)。既定は OFF。\n\n- 削除するのは、「その行を外しても `clang -fsyntax-only` の診断が増えない」と確かめたものだけです。提供する名前が重なる include (review)、コメントで理由を書いた include、名前の表による判定 (clang が無いときなど) のものは削除しません。\n- 削除の跡に空行が連続しないよう詰めます。\n- 削除した後にプロジェクト全体の構文チェックをやり直し、削除前は通っていたのに通らなくなったら、**全て元に戻します**。\n- エディタに未保存の変更があるファイルは、書き換えません。\n- 変更前の内容は `.42check/include-backup/` に退避されます。\n- `normExtra.disable` に `unused-include` を入れると、この削除もしません。"
+        },
         "c42check.normExtra.shortNames": {
           "type": "array",
           "items": {

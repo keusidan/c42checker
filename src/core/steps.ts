@@ -7,6 +7,7 @@ import { resolveCtags, runCtagsSymbols } from './ctags';
 import { exec } from './exec';
 import { checkMakefile, toDiags as makefileDiags } from './makefile';
 import { judgeIncludes } from './includecheck';
+import { applyRemovals, shiftLine } from './includefix';
 import { listIncludes, MANUAL_ITEMS, normExtra, resolveLocal, RULES, type Finding } from './normextra';
 import {
   dedupe,
@@ -222,6 +223,40 @@ const norminette: StepDef = {
   },
 };
 
+/**
+ * 設定 normExtra.removeUnusedIncludes: コンパイラで未使用と確かめた include (error) をファイルから削除する。
+ * 削除の前後でプロジェクト全体の構文チェックを行い、通っていたものが通らなくなれば、全て元に戻す。
+ * 返す remaining は、削除したものを除き、行番号を削除後のものに直した findings (review など)。
+ */
+async function removeUnusedIncludes(ctx: Context, findings: readonly Finding[]): Promise<{ removed: number; remaining: Finding[]; log: string }> {
+  const targets = findings.filter((f) => f.strength === 'error');
+  const keep = findings.filter((f) => f.strength !== 'error');
+  if (targets.length === 0) return { removed: 0, remaining: [...findings], log: '' };
+  const baseline = await syntaxCheck(ctx);
+  const fix = applyRemovals(ctx, targets);
+  let log = '';
+  if (fix.dirty.length > 0) {
+    log += `未保存の変更があるため、削除しなかった include: ${fix.dirty.map((f) => `${path.relative(ctx.root, f.file)}:${f.line}`).join(', ')}\n`;
+  }
+  if (fix.removed.length === 0) return { removed: 0, remaining: [...findings], log };
+  const after = await syntaxCheck(ctx);
+  if (baseline.checked && baseline.ok && after.checked && !after.ok) {
+    fix.restore();
+    return {
+      removed: 0,
+      remaining: [...findings],
+      log: `${log}include を削除した後に構文チェックが通らなくなったため、全て元に戻しました (削除しません):\n${after.output}`,
+    };
+  }
+  const list = fix.removed.map((f) => `  ${path.relative(ctx.root, f.file)}:${f.line} ${/#include \S+/.exec(f.message)?.[0] ?? '#include'}`).join('\n');
+  log += `使っていない #include を ${fix.removed.length} 個削除しました (変更前は .42check/include-backup/ に退避):\n${list}\n`;
+  const remaining = [...keep, ...fix.dirty].map((f) => {
+    const removedLines = fix.changed.get(f.file);
+    return removedLines ? { ...f, line: shiftLine(f.line, removedLines) } : f;
+  });
+  return { removed: fix.removed.length, remaining, log };
+}
+
 /** Norm の (*) 規則 (norminette が検査しない規則) の、自動で判定できる部分。判定できない部分は、ログに毎回チェックリストとして出す。 */
 const normExtraStep: StepDef = {
   id: 'normExtra',
@@ -248,24 +283,47 @@ const normExtraStep: StepDef = {
     const disabled = new Set(ctx.settings.normExtraDisable);
     // 使っていない include は、コンパイラで確かめる (include を 1 行ずつ外して、診断が増えるかを見る)。clang が無い / 判定できないファイルは、名前の表で判定する
     let includeVerdicts: { judged: ReadonlySet<string>; findings: readonly Finding[] } | undefined;
+    let removedIncludes = 0;
     if (!disabled.has('unused-include')) {
       const resolver = { allHeaders: ctx.headers, includeDirs: ctx.includeDirs };
-      const includers = new Map<string, string[]>();
-      for (const src of ctx.sources) {
-        for (const inc of listIncludes(src)) {
-          const target = inc.system ? undefined : resolveLocal(src, inc.name, resolver);
-          if (target) includers.set(target, [...(includers.get(target) ?? []), src]);
+      // ヘッダ → それを include しているファイル。ヘッダの include の判定では、そのヘッダを (ヘッダ経由で) 使う全ての .c で確かめる
+      const includedBy = new Map<string, string[]>();
+      for (const file of [...ctx.sources, ...(ctx.mainFile ? [ctx.mainFile] : []), ...ctx.headers]) {
+        for (const inc of listIncludes(file)) {
+          const target = inc.system ? undefined : resolveLocal(file, inc.name, resolver);
+          if (target) includedBy.set(target, [...(includedBy.get(target) ?? []), file]);
         }
       }
+      const includersOf = (header: string): string[] => {
+        const found = new Set<string>();
+        const seen = new Set<string>([header]);
+        const stack = [header];
+        while (stack.length > 0) {
+          for (const user of includedBy.get(stack.pop()!) ?? []) {
+            if (user.endsWith('.c')) found.add(user);
+            else if (!seen.has(user)) {
+              seen.add(user);
+              stack.push(user);
+            }
+          }
+        }
+        return [...found];
+      };
       const r = await judgeIncludes({
         ctx,
         files: normTargets(ctx),
         includesOf: listIncludes,
-        includersOf: (h) => includers.get(h) ?? [],
+        includersOf,
         flags: [...incFlags(ctx), ...extraCflags(ctx)],
       });
       log += r.log;
       includeVerdicts = r;
+      if (ctx.settings.normExtraRemoveUnusedIncludes) {
+        const fixed = await removeUnusedIncludes(ctx, r.findings);
+        log += fixed.log;
+        removedIncludes = fixed.removed;
+        includeVerdicts = { judged: r.judged, findings: fixed.remaining };
+      }
     }
     const findings = normExtra({
       includeVerdicts,
@@ -302,7 +360,11 @@ const normExtraStep: StepDef = {
 
     const failReviews = ctx.settings.normExtraReviewAsFail && reviews.length > 0;
     const failed = errors.length > 0 || failReviews;
-    const parts = [errors.length ? `error ${errors.length} 件` : '', reviews.length ? `review ${reviews.length} 件${failReviews ? '' : ' (fail にはしません)'}` : ''].filter(Boolean);
+    const parts = [
+      removedIncludes ? `使っていない #include を ${removedIncludes} 個削除しました` : '',
+      errors.length ? `error ${errors.length} 件` : '',
+      reviews.length ? `review ${reviews.length} 件${failReviews ? '' : ' (fail にはしません)'}` : '',
+    ].filter(Boolean);
     return {
       status: failed ? 'fail' : 'pass',
       diags,

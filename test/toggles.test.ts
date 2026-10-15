@@ -27,7 +27,7 @@ const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'
   contributes: { configuration: { properties: Record<string, { default: unknown; type: string }> }; commands: { command: string }[] };
 };
 
-test('「設定」グループに、指定された 5 つの真偽値の設定が並ぶ', () => {
+test('「設定」グループに、真偽値の設定 6 つが並ぶ (5 つは指定されたもの + 使っていない #include の削除)', () => {
   const t = tree();
   assert.deepEqual(
     settingItems(t).map((x) => x.item.label),
@@ -37,11 +37,12 @@ test('「設定」グループに、指定された 5 つの真偽値の設定�
       'Makefile の check ターゲットを使う',
       '実行時 (段階 0) にプロトタイプを同期',
       '保存時にプロトタイプを同期',
+      '使っていない #include を削除',
     ],
   );
 });
 
-test('既定: 5 つともすべて OFF (プロトタイプの同期は実行時・保存時とも OFF)', () => {
+test('既定: 6 つともすべて OFF (プロトタイプの同期は実行時・保存時とも OFF。ソースを書き換える設定は全て OFF)', () => {
   const t = tree();
   assert.ok(settingItems(t).every((x) => x.item.checkboxState === U.Unchecked));
   assert.equal(DEFAULT_SETTINGS.protoSyncOnRun, false);
@@ -58,6 +59,7 @@ test('設定 → チェックボックス: settings.json の値の変更が、�
   state.config['c42check.useMakeCheckTarget'] = true;
   state.config['c42check.proto.syncOnRun'] = true;
   state.config['c42check.proto.syncOnSave'] = true;
+  state.config['c42check.normExtra.removeUnusedIncludes'] = true;
   assert.ok(settingItems(t).every((x) => x.item.checkboxState === U.Checked));
   state.config['c42check.failFast'] = 'stage';
   assert.equal(settingItems(t)[0].item.checkboxState, U.Unchecked, '"stage" は OFF');
@@ -71,12 +73,14 @@ test('チェックボックス → 設定: 対応するキーに書き込む (fa
   await t.onCheckbox([[items[2].node, U.Checked]]);
   await t.onCheckbox([[items[3].node, U.Checked]]);
   await t.onCheckbox([[items[4].node, U.Checked]]);
+  await t.onCheckbox([[items[5].node, U.Checked]]);
   assert.deepEqual(state.updates, [
     { key: 'c42check.failFast', value: 'step' },
     { key: 'c42check.debug.sanitizer', value: true },
     { key: 'c42check.useMakeCheckTarget', value: true },
     { key: 'c42check.proto.syncOnRun', value: true },
     { key: 'c42check.proto.syncOnSave', value: true },
+    { key: 'c42check.normExtra.removeUnusedIncludes', value: true },
   ]);
   await t.onCheckbox([[items[0].node, U.Unchecked]]);
   assert.deepEqual(state.updates.at(-1), { key: 'c42check.failFast', value: 'stage' });

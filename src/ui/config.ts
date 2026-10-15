@@ -65,6 +65,7 @@ export function readSettings(): Settings {
     normExclude: strings(c.get<unknown>('normExclude'), d.normExclude),
     normExtraDisable: strings(c.get<unknown>('normExtra.disable'), d.normExtraDisable),
     normExtraReviewAsFail: c.get<boolean>('normExtra.reviewAsFail') ?? d.normExtraReviewAsFail,
+    normExtraRemoveUnusedIncludes: c.get<boolean>('normExtra.removeUnusedIncludes') ?? d.normExtraRemoveUnusedIncludes,
     normExtraShortNames: strings(c.get<unknown>('normExtra.shortNames'), d.normExtraShortNames),
     compileCflags: strings(c.get<unknown>('compile.cflags'), d.compileCflags),
     compileLdflags: strings(c.get<unknown>('compile.ldflags'), d.compileLdflags),

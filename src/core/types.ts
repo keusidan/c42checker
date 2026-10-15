@@ -77,6 +77,8 @@ export interface Settings {
   normExtraDisable: string[];
   /** true なら、normExtra の review (疑わしいだけ) も fail にする */
   normExtraReviewAsFail: boolean;
+  /** true なら、コンパイラで未使用と確かめた #include を、ファイルから削除する (.42check/include-backup/ に退避) */
+  normExtraRemoveUnusedIncludes: boolean;
   /** normExtra の bad-variable-name で、許可する 1 文字の変数名 */
   normExtraShortNames: string[];
   compileCflags: string[];
@@ -128,6 +130,7 @@ export const DEFAULT_SETTINGS: Settings = {
   normExclude: ['main.c'],
   normExtraDisable: [],
   normExtraReviewAsFail: false,
+  normExtraRemoveUnusedIncludes: false,
   normExtraShortNames: ['i', 'j', 'k', 'c', 'n', 's'],
   compileCflags: [],
   compileLdflags: [],
