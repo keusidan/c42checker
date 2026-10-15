@@ -75,9 +75,12 @@ export function detectTools(envPath = process.env.PATH ?? ''): Tools {
 }
 
 /** 各ステップが必要とするツール (View で未検出を表示するため) */
-export const STEP_TOOL: Record<StepId, keyof Tools> = {
+/** 外部ツールを使わない項目は undefined */
+export const STEP_TOOL: Record<StepId, keyof Tools | undefined> = {
   cFormatter: 'cFormatter',
   norminette: 'norminette',
+  normExtra: undefined,
+  makefile: 'make',
   warnings: 'cc',
   clangTidy: 'tidy',
   scanBuild: 'scanBuild',

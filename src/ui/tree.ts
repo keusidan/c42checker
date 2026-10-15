@@ -83,7 +83,7 @@ export class CheckTree implements vscode.TreeDataProvider<Node>, vscode.Disposab
     const step = STEPS.find((s) => s.id === node.id)!;
     const status = this.runner.statusOf(node.id);
     const toolKey = STEP_TOOL[node.id];
-    const missing = !this.tools[toolKey];
+    const missing = toolKey !== undefined && !this.tools[toolKey];
     const result = this.runner.resultOf(node.id);
 
     const item = new vscode.TreeItem(step.label, vscode.TreeItemCollapsibleState.None);
@@ -101,7 +101,7 @@ export class CheckTree implements vscode.TreeDataProvider<Node>, vscode.Disposab
     const tip = new vscode.MarkdownString();
     tip.appendMarkdown(`**${step.label}** (段階 ${step.stage})`);
     if (step.note) tip.appendMarkdown(`\n\n${step.note}`);
-    if (missing) tip.appendMarkdown(`\n\n未検出: ${INSTALL_HINTS[toolKey]}`);
+    if (missing && toolKey) tip.appendMarkdown(`\n\n未検出: ${INSTALL_HINTS[toolKey]}`);
     if (result?.reason) tip.appendMarkdown(`\n\n${result.reason}`);
     if (result?.hint) tip.appendMarkdown(`\n\n対処案: ${result.hint}`);
     item.tooltip = tip;

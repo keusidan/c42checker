@@ -327,6 +327,8 @@
           "default": {
             "cFormatter": false,
             "norminette": true,
+            "normExtra": true,
+            "makefile": true,
             "warnings": true,
             "clangTidy": true,
             "scanBuild": true,
@@ -440,48 +442,6 @@
           "additionalProperties": false,
           "markdownDescription": "**項目ごと**に、その項目のツールにだけ追加する引数。キーは `c42check.checks` と同じ項目名。\n\n- `warnings` / `gccAnalyzer` / `asanUbsan` / `tsan` / `msan`: **コンパイラへの引数**\n- `clangTidy`: **clang-tidy 自身のオプション** (コンパイラへの引数は `compile.cflags`)\n- `scanBuild`: **scan-build のオプション** (例: `-enable-checker`)\n- `valgrind`: **valgrind のオプション** (例: `--suppressions=...`)\n- `norminette` / `cFormatter` / `cbmc` / `framaC`: 各コマンドの引数\n\n例: `{ \"warnings\": [\"-Wno-unused-parameter\"], \"valgrind\": [\"--suppressions=${workspaceFolder}/readline.supp\"] }`",
           "properties": {
-            "cFormatter": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              },
-              "markdownDescription": "c_formatter_42 への引数"
-            },
-            "norminette": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              },
-              "markdownDescription": "norminette への引数 (ファイル名の前に入る)"
-            },
-            "warnings": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              },
-              "markdownDescription": "警告強化ビルドの clang への引数"
-            },
-            "clangTidy": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              },
-              "markdownDescription": "clang-tidy 自身のオプション (`--` より前)"
-            },
-            "scanBuild": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              },
-              "markdownDescription": "scan-build のオプション"
-            },
-            "gccAnalyzer": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              },
-              "markdownDescription": "gcc -fanalyzer への引数"
-            },
             "asanUbsan": {
               "type": "array",
               "items": {
@@ -489,26 +449,12 @@
               },
               "markdownDescription": "ASan + UBSan ビルドの clang への引数"
             },
-            "tsan": {
+            "cFormatter": {
               "type": "array",
               "items": {
                 "type": "string"
               },
-              "markdownDescription": "TSan ビルドの clang への引数"
-            },
-            "msan": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              },
-              "markdownDescription": "MSan ビルドの clang への引数"
-            },
-            "valgrind": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              },
-              "markdownDescription": "valgrind のオプション"
+              "markdownDescription": "c_formatter_42 への引数"
             },
             "cbmc": {
               "type": "array",
@@ -517,12 +463,82 @@
               },
               "markdownDescription": "cbmc への引数"
             },
+            "clangTidy": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "markdownDescription": "clang-tidy 自身のオプション (`--` より前)"
+            },
             "framaC": {
               "type": "array",
               "items": {
                 "type": "string"
               },
               "markdownDescription": "frama-c への引数"
+            },
+            "gccAnalyzer": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "markdownDescription": "gcc -fanalyzer への引数"
+            },
+            "makefile": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "この項目は外部コマンドの引数を取りません (使われません)"
+            },
+            "msan": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "markdownDescription": "MSan ビルドの clang への引数"
+            },
+            "normExtra": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "この項目は外部コマンドの引数を取りません (使われません)"
+            },
+            "norminette": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "markdownDescription": "norminette への引数 (ファイル名の前に入る)"
+            },
+            "scanBuild": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "markdownDescription": "scan-build のオプション"
+            },
+            "tsan": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "markdownDescription": "TSan ビルドの clang への引数"
+            },
+            "valgrind": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "markdownDescription": "valgrind のオプション"
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "markdownDescription": "警告強化ビルドの clang への引数"
             }
           },
           "default": {}
@@ -547,6 +563,48 @@
           "type": "boolean",
           "default": true,
           "markdownDescription": "マーカーの**外**で (手書きで) すでに宣言されている関数は、auto prototypes のブロックに**入れない** (重複を防ぐ)。ブロックの中にある古い宣言は、この判定に使わない。\n\nOFF にすると、手書きの宣言があっても、全ての関数をブロックに入れる。"
+        },
+        "c42check.normExtra.disable": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "header-content",
+              "unused-include",
+              "42header",
+              "define-bypass",
+              "define-nonconst",
+              "define-function-like",
+              "comment-non-english",
+              "comment-useless",
+              "comment-norm-excuse",
+              "bad-function-name",
+              "bad-variable-name",
+              "bad-file-name"
+            ]
+          },
+          "default": [],
+          "markdownDescription": "**Norm の (*) 規則の検査 (`normExtra`) から外す規則**の id。誤検知が続く規則だけを、理由を分かった上で外すためのもの。\n\n- `header-content`: ヘッダに関数の定義がある\n- `unused-include`: 使っていないヘッダの include\n- `42header`: 42 ヘッダの内容 (login・メール・日時)\n- `define-bypass` / `define-nonconst` / `define-function-like`: #define の規則\n- `comment-non-english` / `comment-useless` / `comment-norm-excuse`: コメントの規則\n- `bad-function-name` / `bad-variable-name` / `bad-file-name`: 名前の規則"
+        },
+        "c42check.normExtra.reviewAsFail": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "`true` にすると、Norm の (*) 規則の検査 (`normExtra`) で **review (疑わしいだけで、人の目で確かめるもの)** と判定されたものも fail にします。既定 (`false`) では、review は Problems に warning として出るだけで、fail にはなりません。error (規則の文面から機械的に決まるもの) は、この設定に関係なく fail です。"
+        },
+        "c42check.normExtra.shortNames": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "i",
+            "j",
+            "k",
+            "c",
+            "n",
+            "s"
+          ],
+          "markdownDescription": "`bad-variable-name` で、**使ってよい 1 文字の変数名**。Norm は `a, b, c` のような名前を bad function の例に挙げていますが、`i` (添字) などは評価でも通常は問題になりません。"
         }
       }
     }

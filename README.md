@@ -18,7 +18,7 @@ F5 で CodeLLDB のデバッガを起動でき、**事前チェックに落ち�
 | 段階 | 内容 |
 |---|---|
 | 0 準備 | 空き容量の確認 → `.42check/` の作り直し → ツール検出 → `compile_commands.json` / `.clangd` の生成 |
-| 1 事前チェック (静的) | (任意) c_formatter_42 による整形 → norminette / 警告強化ビルド (`-Wall -Wextra -Werror -Wshadow -Wconversion`) / clang-tidy (`clang-analyzer-*,bugprone-*`) / scan-build / `gcc -fanalyzer` |
+| 1 事前チェック (静的) | (任意) c_formatter_42 による整形 → norminette / **Norm の (*) 規則** / **Makefile (Norm III.11)** / 警告強化ビルド (`-Wall -Wextra -Werror -Wshadow -Wconversion`) / clang-tidy (`clang-analyzer-*,bugprone-*`) / scan-build / `gcc -fanalyzer` |
 | 2 動的チェック | ASan(AddressSanitizer) + UBSan(UndefinedBehaviorSanitizer) / TSan(ThreadSanitizer) / MSan(MemorySanitizer) / valgrind を、**項目ごとに別ビルド**で実行。任意で CBMC / Frama-C Eva (ネイティブにある場合のみ) |
 | 3 デバッガ | F5 経由のときのみ。デバッグ用ビルド (`.42check/debug/prog`) の後、CodeLLDB が起動 |
 
@@ -49,6 +49,43 @@ F5 で CodeLLDB のデバッガを起動でき、**事前チェックに落ち�
 - パターンの書き方: `/` を含まなければ**ファイル名**に一致 (どの深さでも。`main.c` は `src/main.c` にも一致)、含めば**ルートからの相対パス**に一致 (`/main.c` は直下だけ)、`/` で終われば**そのディレクトリ以下の全て** (`tests/`)。`*` は `/` 以外の任意の文字列、`**` は `/` も含む任意の文字列。
 - 例: `"c42check.normExclude": ["main.c", "tests/", "*_test.c"]`。空にすると、全ての `.c` / `.h` が対象です。
 - 対象が全て除外されたときは、失敗ではなく skip になります。
+
+### Norm の (*) 規則と Makefile の検査 (norminette が検査しないもの)
+
+Norm v4.1 の冒頭 (Chapter I Foreword) によると、`(*)` が付いた規則は **norminette が検査せず、評価で見つかるとプロジェクト失敗 (Norm flag) になりえます**。Makefile (III.11) も norminette は検査しません。
+この拡張は、これらのうち**機械で判定できる部分**を、段階 1 の 2 つの項目で検査します。出典: [The Norm, Version 4.1](https://github.com/42School/norminette) (42 Network)。
+
+**判定は 2 段階です。** `error` は規則の文面から機械的に決まるもので、**fail** です。`review` は疑わしいだけで、人の目で確かめるものです。Problems には warning として出ますが、既定では fail にしません (`c42check.normExtra.reviewAsFail: true` で fail にできます)。
+
+| Norm | `(*)` の規則 | この拡張の検査 (規則の id) | 強さ |
+|---|---|---|---|
+| III.5 | ヘッダに置けるのは include / 宣言 / define / プロトタイプ / マクロだけ | ヘッダに関数の定義 (本体) がある (`header-content`) | error |
+| III.5 | 使っていないヘッダの include は禁止 | 使っていない include。標準ヘッダは内蔵の名前の表、プロジェクトのヘッダは ctags で判定。コメントで理由を書いた include は除く (`unused-include`) | error |
+| III.6 | 42 ヘッダの内容が最新 | 既定値 (`marvin`) のまま / 学生メール (`@student.…`) でない / 日時が不正 / 更新が作成より前 (`42header`)。ファイル名の食い違い・未来の日時は review | error / review |
+| III.7 | `#define` はリテラルと定数の値だけ | 値に関数呼び出しや定数と確認できない識別子がある (`define-nonconst`)。関数形式のマクロ (`define-function-like`) | review |
+| III.7 | norm を回避・難読化する `#define` の禁止 | 値に制御構文・文 (`;` `{` `}`)・三項演算子・代入を隠している (`define-bypass`) | error |
+| III.9 | コメントは英語 | ASCII 以外の文字 (日本語など) がある (`comment-non-english`) | error |
+| III.9 | コメントは役に立つ内容 | 空・区切り線だけ・TODO / FIXME・コメントアウトしたコード (`comment-useless`) | review |
+| III.9 | コメントで carryall / bad function を正当化しない | 「norm のために分けた」という説明に読めるコメント (`comment-norm-excuse`) | review |
+| III.1 / III.9 | 名前は explicit / mnemonic | 関数名: `f1` / `func2` / `_part2` など (`bad-function-name`)。変数・引数名: 許可していない 1 文字・`x1` 型・連番 (`bad-variable-name`)。ファイル名 (`bad-file-name`) | review |
+
+**機械では判定できない項目は、毎回ログの末尾にチェックリストで出します** (`[ ] III.1 (*) …`)。たとえば「名前が英語として読める」「標準ライブラリのマクロが課題で許可された範囲か」「carryall / bad function が無い」「42 ヘッダが保存のたびに更新されている」は、人が見るしかありません。
+つまり、この検査が通っても **`(*)` 規則を全て満たしたことにはなりません**。評価で見られる項目のうち、機械で拾える分を先に潰すためのものです。
+
+**誤検知への対処**: 判定は、誤検知より見逃しを選ぶ側 (ヘッダが複数の標準ヘッダの名前を共有するときは「使っている」とみなす、など) に倒していますが、完全ではありません。
+続く規則だけを、`c42check.normExtra.disable` (規則の id の配列) で外せます。使ってよい 1 文字の変数名は `c42check.normExtra.shortNames` (既定: `i j k c n s`) です。`c42check.normExclude` (既定: `main.c`) に一致するファイルは、この検査の対象外です。
+
+**Makefile (Norm III.11)** は、プロジェクトの**コピー**で実際に `make` を動かして検査します (元のファイルは変えません)。
+
+- `$(NAME)` / `all` / `clean` / `fclean` / `re` の規則がある (error)
+- `make` だけで `all` が動く (`make -p` の `.DEFAULT_GOAL` で確認) (error)
+- 2 回目の `make` で何も再ビルドされない = relink しない (1 回目と 2 回目の間で、ファイルの更新時刻が変わらないことで確認) (error)
+- `make clean` で `.o` が消え、`make fclean` でビルドの成果物が全て消え、`make re` が通る (error)
+- ソースを `wildcard` / `find` / `*.c` で列挙していない (error)
+- 同梱のライブラリ (Makefile のあるディレクトリを `-L` で指定) を `$(MAKE) -C` などで自動ビルドしている (error)
+- 複数のバイナリを作る課題で、バイナリごとの規則がある → **機械では判定できません** (ログのチェックリスト)
+
+Makefile が無いプロジェクトでは skip です。Makefile が実行する命令 (`git clone` など) も、そのまま動く点に注意してください (コピーの中で実行し、`c42check.staticTimeoutSec` で打ち切ります)。
 
 ### コンパイル引数 (`-lbsd` など)
 
@@ -150,7 +187,7 @@ sanitizer は互いに併用できないため、View の段階 2 に**別々の
 git clone https://github.com/keusidan/c42checker.git
 cd c42checker
 npm ci
-npm run package                      # c42checker-0.1.0.vsix ができる (約 48KB)
+npm run package                      # c42checker-0.1.0.vsix ができる (約 65KB)
 
 # 校舎 (sudo 不要。.vsix を Drive などで持ってくる):
 code --install-extension c42checker-0.1.0.vsix
@@ -310,7 +347,7 @@ Node.js 22 以上が必要です (`.nvmrc`、`package.json` の `engines`)。
 npm ci
 npm run typecheck   # tsc --noEmit
 npm run build       # esbuild で dist/extension.js に bundle
-npm test            # 150 件。実際のツール (norminette / clang / valgrind など) があれば使い、無ければ該当項目は skip
+npm test            # 183 件。実際のツール (norminette / clang / valgrind など) があれば使い、無ければ該当項目は skip
 npm run package     # .vsix を作る
 ```
 

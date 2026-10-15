@@ -1,6 +1,8 @@
 export const STEP_IDS = [
   'cFormatter', // norminette の前に走らせる整形 (ファイルを書き換える)
   'norminette',
+  'normExtra', // Norm の (*) 規則 (norminette が検査しない規則) の、自動で判定できる部分
+  'makefile', // Norm III.11 の Makefile の規則 (norminette は Makefile を検査しない)
   'warnings',
   'clangTidy',
   'scanBuild',
@@ -71,6 +73,12 @@ export interface Settings {
   /** コンパイル引数 (VS Code の settings.json の c42check.compile.* / clangTidy.* / valgrind.*) */
   /** norminette と c_formatter_42 の対象から外すファイル (パターン)。既定: main.c */
   normExclude: string[];
+  /** normExtra (Norm の (*) 規則) の検査から外す規則の id */
+  normExtraDisable: string[];
+  /** true なら、normExtra の review (疑わしいだけ) も fail にする */
+  normExtraReviewAsFail: boolean;
+  /** normExtra の bad-variable-name で、許可する 1 文字の変数名 */
+  normExtraShortNames: string[];
   compileCflags: string[];
   compileLdflags: string[];
   compileLibs: string[];
@@ -84,6 +92,8 @@ export interface Settings {
 export const DEFAULT_CHECKS: Record<StepId, boolean> = {
   cFormatter: false, // ソースを書き換えるため既定は OFF
   norminette: true,
+  normExtra: true,
+  makefile: true,
   warnings: true,
   clangTidy: true,
   scanBuild: true,
@@ -116,6 +126,9 @@ export const DEFAULT_SETTINGS: Settings = {
   protoSyncOnSave: false,
   protoSkipExisting: true,
   normExclude: ['main.c'],
+  normExtraDisable: [],
+  normExtraReviewAsFail: false,
+  normExtraShortNames: ['i', 'j', 'k', 'c', 'n', 's'],
   compileCflags: [],
   compileLdflags: [],
   compileLibs: [],

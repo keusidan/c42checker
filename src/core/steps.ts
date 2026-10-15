@@ -3,7 +3,10 @@ import * as path from 'node:path';
 import { extraCflags, normalizeArgs, stepArgs } from './args';
 import { isExcluded } from './exclude';
 import { buildBinary, buildInputs, NO_MAIN_HINT, NO_MAIN_REASON } from './build';
+import { resolveCtags, runCtagsSymbols } from './ctags';
 import { exec } from './exec';
+import { checkMakefile, toDiags as makefileDiags } from './makefile';
+import { MANUAL_ITEMS, normExtra, RULES, type Finding } from './normextra';
 import {
   dedupe,
   parseCbmc,
@@ -215,6 +218,109 @@ const norminette: StepDef = {
     const diags = parseNorminette(r.output, ctx.root);
     const out = cmdline(bin, args) + stripAnsi(r.output);
     return verdict(r.code, diags, out, { error: r.error, timedOut: r.timedOut });
+  },
+};
+
+/** Norm の (*) 規則 (norminette が検査しない規則) の、自動で判定できる部分。判定できない部分は、ログに毎回チェックリストとして出す。 */
+const normExtraStep: StepDef = {
+  id: 'normExtra',
+  label: 'Norm (*) 規則',
+  stage: 1,
+  note: 'norminette が検査しない Norm v4.1 の `(*)` 規則を、自動で判定できる範囲で検査します (ヘッダの中身・使っていない include・42 ヘッダの内容・#define・コメント・名前)。error は fail、review (疑わしいだけ) は warning です。機械では判定できない項目は、ログの末尾にチェックリストで出します。',
+  prerequisite: (ctx) =>
+    first(
+      ctx.sources.length + ctx.headers.length === 0 ? NO_SOURCES : undefined,
+      ctx.sources.length + ctx.headers.length > 0 && normTargets(ctx).length === 0 ? NO_NORM_TARGETS : undefined,
+    ),
+  async run(ctx) {
+    let log = '$ Norm v4.1 の (*) 規則の検査 (この拡張の内蔵)\n';
+    // プロジェクト内のヘッダが提供する名前は ctags で取り出す (無ければ、プロジェクト内のヘッダの include は判定しない)
+    let headerSymbols: Map<string, Set<string>> | undefined;
+    const ct = await resolveCtags();
+    if (ct.bin) {
+      const sym = await runCtagsSymbols(ct.bin, ctx.headers, ctx.root, staticMs(ctx), ctx.signal);
+      if (sym.ok) headerSymbols = sym.byFile;
+      else log += `(ctags が失敗したため、プロジェクト内のヘッダの include の判定は行いません: ${sym.error})\n`;
+    } else {
+      log += `(universal-ctags が無いため、プロジェクト内のヘッダの include の判定は行いません: ${ct.reason})\n`;
+    }
+    const disabled = new Set(ctx.settings.normExtraDisable);
+    const findings = normExtra({
+      root: ctx.root,
+      files: normTargets(ctx),
+      allSources: ctx.sources,
+      allHeaders: ctx.headers,
+      includeDirs: ctx.includeDirs,
+      disabled,
+      shortNames: new Set(ctx.settings.normExtraShortNames),
+      headerSymbols,
+    });
+    const errors = findings.filter((f) => f.strength === 'error');
+    const reviews = findings.filter((f) => f.strength === 'review');
+    const diags: Diag[] = findings.map((f: Finding) => ({
+      file: f.file,
+      line: f.line,
+      col: 1,
+      severity: f.strength === 'error' ? 'error' : 'warning',
+      message: `[${f.rule}] ${f.message}`,
+      source: 'norm-extra',
+    }));
+
+    log += '\n検査する規則 (error = fail / review = 人の目で確認):\n';
+    for (const r of RULES) {
+      const mine = findings.filter((f) => f.rule === r.id);
+      const state = disabled.has(r.id) ? '無効 (設定で除外)' : mine.length === 0 ? 'OK' : `${mine.filter((f) => f.strength === 'error').length} error / ${mine.filter((f) => f.strength === 'review').length} review`;
+      log += `  [${r.id}] Norm ${r.norm}: ${r.title} → ${state}\n`;
+    }
+    log += '\n';
+    for (const f of findings) log += `${path.relative(ctx.root, f.file)}:${f.line}: ${f.strength} [${f.rule}] ${f.message}\n`;
+    log += `\n--- 機械では判定できない項目 (評価で人が見ます。提出前に自分で確認してください) ---\n`;
+    for (const m of MANUAL_ITEMS) log += `  [ ] ${m.norm}: ${m.text}\n`;
+
+    const failReviews = ctx.settings.normExtraReviewAsFail && reviews.length > 0;
+    const failed = errors.length > 0 || failReviews;
+    const parts = [errors.length ? `error ${errors.length} 件` : '', reviews.length ? `review ${reviews.length} 件${failReviews ? '' : ' (fail にはしません)'}` : ''].filter(Boolean);
+    return {
+      status: failed ? 'fail' : 'pass',
+      diags,
+      log,
+      reason: parts.length ? parts.join('、') : undefined,
+      hint: failed ? '設定 `c42check.normExtra.disable` で、誤検知が続く規則だけを外せます (規則の id はログの [ ] の中)' : undefined,
+    };
+  },
+};
+
+function projectMakefile(ctx: Context): string | undefined {
+  return findMakefile(ctx.targetRoot) ?? findMakefile(ctx.root);
+}
+
+/** Norm III.11: Makefile の規則 (norminette は Makefile を検査しない) */
+const makefileStep: StepDef = {
+  id: 'makefile',
+  label: 'Makefile (Norm III.11)',
+  stage: 1,
+  note: 'Norm III.11 の Makefile の規則を検査します: `$(NAME)` `all` `clean` `fclean` `re` の規則、make だけで all が動く、2 回目の make で relink しない、ソースを明示 (wildcard なし)、同梱のライブラリを自動でビルドする。プロジェクトのコピーで実際に make を動かします (元のファイルは変えません)。',
+  prerequisite: (ctx) =>
+    first(
+      projectMakefile(ctx) ? undefined : { reason: 'Makefile がありません', hint: 'Makefile を提出する課題だけが対象です' },
+    ),
+  async run(ctx) {
+    const makefile = projectMakefile(ctx)!;
+    const r = await checkMakefile(ctx, makefile);
+    const diags = makefileDiags(makefile, r.findings);
+    const errors = r.findings.filter((f) => f.strength === 'error');
+    let log = r.log;
+    if (r.note) log += `(${r.note})\n`;
+    log += '\n';
+    for (const f of r.findings) log += `${f.strength}: ${f.message}\n`;
+    if (r.findings.length === 0) log += 'Makefile の検査に問題はありません\n';
+    log += '\n--- 機械では判定できない項目 ---\n  [ ] 複数のバイナリを作る課題で、バイナリごとの規則があり、all が全てを作る (Norm III.11)\n';
+    return {
+      status: errors.length > 0 ? 'fail' : 'pass',
+      diags,
+      log,
+      reason: errors.length > 0 ? `error ${errors.length} 件` : undefined,
+    };
   },
 };
 
@@ -647,7 +753,7 @@ const framaC: StepDef = {
 };
 
 /** 実行順 (段階 1 → 段階 2、段階内は宣言順)。 */
-export const STEPS: StepDef[] = [cFormatter, norminette, warnings, clangTidy, scanBuild, gccAnalyzer, asanUbsan, tsan, msan, valgrind, cbmc, framaC];
+export const STEPS: StepDef[] = [cFormatter, norminette, normExtraStep, makefileStep, warnings, clangTidy, scanBuild, gccAnalyzer, asanUbsan, tsan, msan, valgrind, cbmc, framaC];
 
 export function stepById(id: StepId): StepDef {
   const s = STEPS.find((x) => x.id === id);
