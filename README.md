@@ -60,7 +60,7 @@ Norm v4.1 の冒頭 (Chapter I Foreword) によると、`(*)` が付いた規則
 | Norm | `(*)` の規則 | この拡張の検査 (規則の id) | 強さ |
 |---|---|---|---|
 | III.5 | ヘッダに置けるのは include / 宣言 / define / プロトタイプ / マクロだけ | ヘッダに関数の定義 (本体) がある (`header-content`) | error |
-| III.5 | 使っていないヘッダの include は禁止 | 使っていない include。標準ヘッダは内蔵の名前の表、プロジェクトのヘッダは ctags で判定。コメントで理由を書いた include は除く (`unused-include`) | error |
+| III.5 | 使っていないヘッダの include は禁止 | 使っていない include。**clang で include を 1 行ずつ外して構文チェックをやり直し、診断が増えなければ未使用**と判定 (下記)。コメントで理由を書いた include は除く (`unused-include`) | error / review |
 | III.6 | 42 ヘッダの内容が最新 | 既定値 (`marvin`) のまま / 学生メール (`@student.…`) でない / 日時が不正 / 更新が作成より前 (`42header`)。ファイル名の食い違い・未来の日時は review | error / review |
 | III.7 | `#define` はリテラルと定数の値だけ | 値に関数呼び出しや定数と確認できない識別子がある (`define-nonconst`)。関数形式のマクロ (`define-function-like`) | review |
 | III.7 | norm を回避・難読化する `#define` の禁止 | 値に制御構文・文 (`;` `{` `}`)・三項演算子・代入を隠している (`define-bypass`) | error |
@@ -68,6 +68,15 @@ Norm v4.1 の冒頭 (Chapter I Foreword) によると、`(*)` が付いた規則
 | III.9 | コメントは役に立つ内容 | 空・区切り線だけ・TODO / FIXME・コメントアウトしたコード (`comment-useless`) | review |
 | III.9 | コメントで carryall / bad function を正当化しない | 「norm のために分けた」という説明に読めるコメント (`comment-norm-excuse`) | review |
 | III.1 / III.9 | 名前は explicit / mnemonic | 関数名: `f1` / `func2` / `_part2` など (`bad-function-name`)。変数・引数名: 許可していない 1 文字・`x1` 型・連番 (`bad-variable-name`)。ファイル名 (`bad-file-name`) | review |
+
+**使っていない include の判定 (`unused-include`)**: プロジェクトのコピーの中で、`#include` の行を 1 行ずつ空行にして `clang -fsyntax-only` を走らせ、**診断 (warning / error) が増えなければ、その include は使われていない**と判定します (元のファイルは書き換えません)。名前の表を持たないので、`mlx.h` や `readline` などの表にないヘッダも判定できます。型・マクロ・定数・`static inline` も、コンパイラが必要としたかどうかで決まります。
+
+- `.c` が自分のヘッダを include するのは、外すと「プロトタイプが無い」警告 (`-Wmissing-prototypes`) が出るので、必要と判定されます。
+- `.h` は、そのヘッダだけを include する小さな `.c` と、そのヘッダを include している `.c` の構文チェックで判定します (`ft.h` が include する `<stdlib.h>` を、`ft.h` を使う `.c` が `malloc` に使っていれば必要)。
+- 提供する名前が重なる include (`size_t` だけを使うときの `<stdlib.h>` と `<stdio.h>` など) は、外せるものを全部外すと通らないので、**review** にします (どれか 1 つは必要)。
+- 外す前から fatal error (include が見つからない) のファイルや、clang が無いときは、標準ヘッダの名前の表と ctags による判定に切り替えます。
+- **取りこぼし**: `#ifdef` で使うマクロだけを提供する include は、外しても診断が変わらないので、未使用と判定されます。理由があるなら、その行にコメントで書いてください (コメントのある include は判定しません)。
+- include の数だけ構文チェックを走らせます (`c42check.staticTimeoutSec` の 3 倍で打ち切り、残りは名前の表で判定します)。
 
 **機械では判定できない項目は、毎回ログの末尾にチェックリストで出します** (`[ ] III.1 (*) …`)。たとえば「名前が英語として読める」「標準ライブラリのマクロが課題で許可された範囲か」「carryall / bad function が無い」「42 ヘッダが保存のたびに更新されている」は、人が見るしかありません。
 つまり、この検査が通っても **`(*)` 規則を全て満たしたことにはなりません**。評価で見られる項目のうち、機械で拾える分を先に潰すためのものです。
@@ -187,7 +196,7 @@ sanitizer は互いに併用できないため、View の段階 2 に**別々の
 git clone https://github.com/keusidan/c42checker.git
 cd c42checker
 npm ci
-npm run package                      # c42checker-0.1.0.vsix ができる (約 65KB)
+npm run package                      # c42checker-0.1.0.vsix ができる (約 68KB)
 
 # 校舎 (sudo 不要。.vsix を Drive などで持ってくる):
 code --install-extension c42checker-0.1.0.vsix
@@ -347,7 +356,7 @@ Node.js 22 以上が必要です (`.nvmrc`、`package.json` の `engines`)。
 npm ci
 npm run typecheck   # tsc --noEmit
 npm run build       # esbuild で dist/extension.js に bundle
-npm test            # 183 件。実際のツール (norminette / clang / valgrind など) があれば使い、無ければ該当項目は skip
+npm test            # 194 件。実際のツール (norminette / clang / valgrind など) があれば使い、無ければ該当項目は skip
 npm run package     # .vsix を作る
 ```
 

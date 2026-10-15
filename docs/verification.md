@@ -32,14 +32,14 @@ VS Code 上でしか確認できない項目は私の環境では実行できて
 
 チェック内容の判定は版によって差が出うる (特に clang-tidy / gcc -fanalyzer の検出)。上記の校舎の実測で、`-12` 系でも想定どおりだったことは確認済み。
 
-## 自動テスト (183 件)
+## 自動テスト (194 件)
 
 ```sh
 # norminette が PATH に必要。無い場合は該当項目が skip になる
 npm test        # = node esbuild.mjs --test && node --test "out-test/*.test.js"
 ```
 
-結果: **183 件中 183 件 pass、0 fail、0 skip** (2026-10-07、上記の環境)。
+結果: **194 件中 194 件 pass、0 fail、0 skip** (2026-10-07、上記の環境)。
 
 - `test/parse.test.ts`: 出力の parser (gcc / clang / UBSan / norminette (ANSI カラー除去) / ASan / LSan / valgrind)
 - `test/pipeline.test.ts`: fail-fast の制御 (fake step で、段階 1 失敗 → 段階 2 非実行 / `failFast: "step"` / skip は失敗ではない / 空き容量不足 / `.42check/` 上限超過)
@@ -53,6 +53,7 @@ npm test        # = node esbuild.mjs --test && node --test "out-test/*.test.js"
 - `test/compileargs.test.ts`: コンパイル引数の設定。引数の正規化 (`${workspaceFolder}` の展開、shell 風の分割、shell を介さないこと)、静的ライブラリ `libfoo.a` を使った `-L` / `-l` の検証 (指定が無ければリンク失敗、`ldflags` に `-l` を書くと失敗、`libs` なら成功)、`-D` が必須の課題が全ての項目で通ること、`compile_commands.json` への反映、`perStep` / `warningFlags` / `clangTidy.checks` / `valgrind.args`、VS Code の設定からの読み込みと型が違うときの既定値への戻り、package.json の既定値と DEFAULT_SETTINGS の一致
 - `test/formatter.test.ts`: c_formatter_42 (0.2.8)。norminette の前に実行される順序、norm 違反が減ること、退避、冪等性、**整形でコードが壊れたら元に戻して fail** (長い文字列リテラル / include の順序依存)、未保存ファイルの skip、ツール無しの skip、`.clang-format` に触れないこと、TSan / MSan の起動時 SEGV の判定
 - `test/normextra.test.ts`: Norm v4.1 の (*) 規則の検査。字句読み取り (コメント / 文字列 / 関数定義 / 引数 / ローカル変数)、規則ごとの error と review の判定 (ヘッダの関数定義、使っていない include (標準ヘッダ・**本物の ctags** によるプロジェクトのヘッダ・コメントによる理由づけ)、42 ヘッダ (marvin・学生メール・日時・更新 < 作成)、`#define` (制御構文・三項演算子・代入・関数形式・定数でない値)、コメント (日本語・空・TODO・コメントアウトしたコード・norm の言い訳)、名前 (関数・変数・ファイル))、`normExtra.disable`、全サンプルで error が出ないこと、error / review / `reviewAsFail` / `normExclude` / 全て除外で skip / 段階 1 の fail が段階 2 を止めること、規則の一覧と package.json の一致
+- `test/includecheck.test.ts`: 使っていない include のコンパイラによる判定 (**本物の clang**)。関数・型・マクロ・定数 (`malloc` / `write` / `uint8_t` / `INT_MAX`)、名前の表にないプロジェクトのヘッダ (ctags 不要)、自分のヘッダを include する `.c`、提供する名前が重なる include (review)、重なりと未使用の混在、コメントによる理由づけ、ヘッダファイル (include 元の `.c` での使用)、外す前から fatal error のファイル、元のファイルを書き換えない・コピーを消す、clang が無いときの切り替え、step への反映
 - `test/makefile.test.ts`: Makefile (Norm III.11) の検査。静的な読み取り (必須の規則・wildcard・同梱ライブラリの自動ビルド) と、**本物の make** での relink・all が既定・clean / fclean / re・make 自体の失敗の検出、元のプロジェクトにビルド成果物を作らないこと、Makefile が無いときの skip
 - `test/proto.test.ts`: プロトタイプ同期。ctags の出力の整形 (純粋関数)、マーカー処理、**本物の universal-ctags 5.9.0** での抽出 → norm 形式で書き込み → **norminette 通過** → 生成したヘッダでプロジェクトがコンパイルできる、冪等性、マーカー無し・壊れ・結果が空・宣言に直せない関数・ctags 無し / Exuberant 版・未保存のヘッダでヘッダが変わらないこと、段階 0 での同期
 - `test/toggles.test.ts`: 「設定」グループ 5 項目の双方向同期 (settings → チェック / チェック → settings、failFast の "step" / "stage" 変換)、既定がすべて OFF、トグルの対応表と package.json の整合
@@ -219,9 +220,11 @@ skip が残る場合は、その項目の Output Channel のログ (`$ setarch .
 
 **確認できていないこと**:
 - 実際の 42 の課題 (libft、minishell など) での**誤検知の率**。判定は、誤検知より見逃しを選ぶ側に倒していますが、実プロジェクトでの実測はしていません。続く誤検知は `c42check.normExtra.disable` で規則ごとに外せます
-- 標準ヘッダの「提供する名前」の表の網羅性 (`src/core/stdsyms.ts`)。表にないヘッダは判定しません。表にあるのに名前が足りないと、`unused-include` が誤って error になりえます
+- 校舎の clang-12 での `unused-include` の判定 (本環境は clang 18)。診断が増えるかを比べる方式なので、版による warning / error の違い (暗黙の関数宣言など) には影響されない設計ですが、実機では未確認です
+- `unused-include` の取りこぼし: `#ifdef` で使うマクロだけを提供する include は、外しても診断が変わらず、未使用と判定されます
+- 標準ヘッダの「提供する名前」の表 (`src/core/stdsyms.ts`) は、clang が無い / 外す前から fatal error のファイルだけの代わりです。表にあるのに名前が足りないと、その場合だけ誤って error になりえます
 - 校舎の `make` (GNU Make 4.3) での動作 (本環境は GNU Make 4.4 系)
 - VS Code の Problems パネルでの表示 (診断は `norm-extra` / `makefile` という source で出します)
 
 **自動では判定できない項目** (ログの末尾にチェックリストで毎回出します。つまり、この検査が通っても `(*)` 規則を全て満たしたことにはなりません):
-名前が英語として読める (III.1) / 表にないヘッダ・ctags が無いときのプロジェクトのヘッダの未使用 include (III.5) / 42 ヘッダが保存のたびに更新されている (III.6) / 標準ライブラリのマクロが課題で許可された範囲か (III.7) / norm 回避の `#define` のうち、制御構文・文・三項演算子・代入以外の手口 (III.7) / コメントが役に立つ内容か・英語か (ASCII 以外の文字を除く) (III.9) / carryall・bad function が無い (III.9) / 複数バイナリの課題でバイナリごとの規則がある (III.11)
+名前が英語として読める (III.1) / clang が無いとき・外す前から fatal error のファイルの、表にないヘッダの未使用 include (III.5) / 42 ヘッダが保存のたびに更新されている (III.6) / 標準ライブラリのマクロが課題で許可された範囲か (III.7) / norm 回避の `#define` のうち、制御構文・文・三項演算子・代入以外の手口 (III.7) / コメントが役に立つ内容か・英語か (ASCII 以外の文字を除く) (III.9) / carryall・bad function が無い (III.9) / 複数バイナリの課題でバイナリごとの規則がある (III.11)

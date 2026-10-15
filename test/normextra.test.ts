@@ -5,6 +5,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { test } from 'node:test';
 import { runCtagsSymbols } from '../src/core/ctags';
+import { syncAuto } from '../src/core/proto';
 import { findFunctions, localNames, parameterNames, preprocessorLines, scanC, withoutPreprocessor } from '../src/core/cscan';
 import { MANUAL_ITEMS, normExtra, RULES, type Finding, type RuleId } from '../src/core/normextra';
 import { runPipeline } from '../src/core/pipeline';
@@ -416,6 +417,11 @@ const stepOf = (r: Awaited<ReturnType<typeof runPipeline>>, id: string) => r.res
 test('step: 全てのサンプル (norm 準拠) で error が出ない。log に規則の一覧と、機械では判定できない項目のチェックリストが出る', async () => {
   for (const [name, over] of [['ok', {}], ['norm-ng', {}], ['bug-asan', {}], ['proto-ok', {}], ['lib-ok', { mainFile: 'tests/test_main.c' }]] as const) {
     const { ctx, cleanup } = sampleContext(name, over);
+    // proto-ok は、ヘッダの自動ブロックが空のままだと「ヘッダが何も宣言していない = include は不要」と正しく判定される。同期してから検査する
+    if (name === 'proto-ok' && (await syncAuto(ctx)).status === 'skip') {
+      cleanup();
+      continue;
+    }
     const r = await runPipeline(ctx, { selected: ['normExtra'] });
     const s = stepOf(r, 'normExtra');
     assert.notEqual(s.status, 'fail', `${name}: ${s.log}`);

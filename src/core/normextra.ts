@@ -36,7 +36,7 @@ export interface RuleInfo {
 
 export const RULES: RuleInfo[] = [
   { id: 'header-content', norm: 'III.5', title: 'ヘッダに置けるのは include / 宣言 / define / プロトタイプ / マクロだけ (関数の定義を置かない)' },
-  { id: 'unused-include', norm: 'III.5', title: '使っていないヘッダの include は禁止 (コメントで理由を書けば許される)' },
+  { id: 'unused-include', norm: 'III.5', title: '使っていないヘッダの include は禁止 (コメントで理由を書けば許される。clang で include を外して確かめる)' },
   { id: '42header', norm: 'III.6', title: '42 ヘッダの内容が最新 (作成者の login とメール、作成・更新の日時)' },
   { id: 'define-bypass', norm: 'III.7', title: 'norm を回避・難読化する #define の禁止 (制御構文・文・三項演算子・代入を隠したもの)' },
   { id: 'define-nonconst', norm: 'III.7', title: '#define はリテラルと定数の値にだけ使う' },
@@ -57,7 +57,7 @@ export const RULE_IDS: RuleId[] = RULES.map((r) => r.id);
  */
 export const MANUAL_ITEMS: { norm: string; text: string }[] = [
   { norm: 'III.1 (*)', text: '全ての識別子 (関数・型・変数) の名前が explicit / mnemonic で、英語として読め、単語が _ で区切られている (機械で見ているのは、1 文字・a1 / f2 型・連番の名前だけです)' },
-  { norm: 'III.5 (*)', text: '使っていない include が無い (標準ヘッダは、この拡張が知っている名前の表で判定しています。表にないヘッダ、ctags が無いときのプロジェクト内のヘッダは判定できません)' },
+  { norm: 'III.5 (*)', text: '使っていない include が無い (clang で include を 1 行ずつ外して確かめています。#ifdef のマクロにだけ効く include は、外しても診断が変わらないため、未使用と判定されます。clang が無い / 外す前から fatal error のファイルは、標準ヘッダの名前の表で判定します)' },
   { norm: 'III.6 (*)', text: '42 ヘッダの日時が、ファイルを保存するたびに自動で更新されている (日時の整合までは見ますが、保存のたびに更新されているかは分かりません)' },
   { norm: 'III.7 (*)', text: '標準ライブラリのマクロ (NULL、INT_MAX、O_RDONLY など) が、課題で許可された範囲に収まっている' },
   { norm: 'III.7 (*)', text: '#define が、norm を回避・難読化するために作られていない (制御構文・文・三項演算子・代入を隠したものだけ検出します)' },
@@ -85,6 +85,8 @@ export interface NormExtraInput {
   shortNames: ReadonlySet<string>;
   /** ctags で取り出したヘッダごとの名前。undefined なら、プロジェクト内のヘッダの include は判定しない */
   headerSymbols?: Map<string, Set<string>>;
+  /** コンパイラで include の使用を判定した結果 (includecheck.ts)。judged のファイルは、名前の表による判定をしない */
+  includeVerdicts?: { judged: ReadonlySet<string>; findings: readonly Finding[] };
   now?: Date;
 }
 
@@ -98,7 +100,7 @@ interface Parsed {
   includes: IncludeRef[];
 }
 
-interface IncludeRef {
+export interface IncludeRef {
   line: number;
   name: string;
   system: boolean;
@@ -141,8 +143,13 @@ function parseFile(file: string): Parsed | undefined {
   };
 }
 
+/** ファイルの #include の一覧 (読めなければ空) */
+export function listIncludes(file: string): IncludeRef[] {
+  return parseFile(file)?.includes ?? [];
+}
+
 /** #include "x.h" が指すプロジェクト内のヘッダを探す (include 元からの相対 → include path → 同名の唯一のヘッダ)。 */
-function resolveLocal(from: string, name: string, input: NormExtraInput): string | undefined {
+export function resolveLocal(from: string, name: string, input: Pick<NormExtraInput, 'allHeaders' | 'includeDirs'>): string | undefined {
   const known = new Set(input.allHeaders);
   const tries = [path.resolve(path.dirname(from), name), ...input.includeDirs.map((d) => path.resolve(d, name))];
   for (const t of tries) if (known.has(t)) return t;
@@ -451,7 +458,10 @@ export function normExtra(input: NormExtraInput): Finding[] {
     const p = parse(file);
     if (!p) continue;
     if (on('header-content')) checkHeaderContent(p, out);
-    if (on('unused-include')) checkUnusedIncludes(p, out, input, cache, includers);
+    if (on('unused-include')) {
+      if (input.includeVerdicts?.judged.has(file)) out.push(...input.includeVerdicts.findings.filter((f) => f.file === file));
+      else checkUnusedIncludes(p, out, input, cache, includers);
+    }
     if (on('42header')) check42Header(p, out, now);
     if (on('define-bypass') || on('define-nonconst') || on('define-function-like')) {
       const tmp: Finding[] = [];

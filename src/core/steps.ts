@@ -6,7 +6,8 @@ import { buildBinary, buildInputs, NO_MAIN_HINT, NO_MAIN_REASON } from './build'
 import { resolveCtags, runCtagsSymbols } from './ctags';
 import { exec } from './exec';
 import { checkMakefile, toDiags as makefileDiags } from './makefile';
-import { MANUAL_ITEMS, normExtra, RULES, type Finding } from './normextra';
+import { judgeIncludes } from './includecheck';
+import { listIncludes, MANUAL_ITEMS, normExtra, resolveLocal, RULES, type Finding } from './normextra';
 import {
   dedupe,
   parseCbmc,
@@ -245,7 +246,29 @@ const normExtraStep: StepDef = {
       log += `(universal-ctags が無いため、プロジェクト内のヘッダの include の判定は行いません: ${ct.reason})\n`;
     }
     const disabled = new Set(ctx.settings.normExtraDisable);
+    // 使っていない include は、コンパイラで確かめる (include を 1 行ずつ外して、診断が増えるかを見る)。clang が無い / 判定できないファイルは、名前の表で判定する
+    let includeVerdicts: { judged: ReadonlySet<string>; findings: readonly Finding[] } | undefined;
+    if (!disabled.has('unused-include')) {
+      const resolver = { allHeaders: ctx.headers, includeDirs: ctx.includeDirs };
+      const includers = new Map<string, string[]>();
+      for (const src of ctx.sources) {
+        for (const inc of listIncludes(src)) {
+          const target = inc.system ? undefined : resolveLocal(src, inc.name, resolver);
+          if (target) includers.set(target, [...(includers.get(target) ?? []), src]);
+        }
+      }
+      const r = await judgeIncludes({
+        ctx,
+        files: normTargets(ctx),
+        includesOf: listIncludes,
+        includersOf: (h) => includers.get(h) ?? [],
+        flags: [...incFlags(ctx), ...extraCflags(ctx)],
+      });
+      log += r.log;
+      includeVerdicts = r;
+    }
     const findings = normExtra({
+      includeVerdicts,
       root: ctx.root,
       files: normTargets(ctx),
       allSources: ctx.sources,
