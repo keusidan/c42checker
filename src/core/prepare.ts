@@ -1,5 +1,5 @@
 import * as fs from 'node:fs';
-import { generateClangd, generateCompdb } from './compdb';
+import { ensureGenerated, STATE_DIR } from './compdb';
 import { buildInputs } from './build';
 import { syncAuto } from './proto';
 import { ensureGitignore, freeSpaceMB, isOnRcloneMount, resetWorkDir } from './workdir';
@@ -39,7 +39,7 @@ export async function prepare(ctx: Context): Promise<StepOutcome> {
   }
 
   try {
-    resetWorkDir(ctx.workDir);
+    resetWorkDir(ctx.workDir, [STATE_DIR]); // 生成済みの記録 (state/) は残す
     if (ensureGitignore(ctx.root)) say('.gitignore に .42check/ を追記しました');
   } catch (e) {
     return { status: 'fail', diags: [], log: log + `.42check/ を準備できませんでした: ${String(e)}\n`, reason: '.42check/ を準備できません' };
@@ -88,10 +88,24 @@ export async function prepare(ctx: Context): Promise<StepOutcome> {
   );
 
   try {
-    const r = await generateCompdb(ctx);
-    say(`compile_commands.json を生成しました (${r.method}, ${r.entries} 件)${r.note ? ` — ${r.note}` : ''}`);
-    const c = generateClangd(ctx.root);
-    say(c.written ? '.clangd を生成しました' : `.clangd: ${c.reason}`);
+    // 実行のたびには書き直さない (clangd が、内容が同じなのに読み直してしまうため)。無いとき・対象や設定が変わったときだけ
+    const g = await ensureGenerated(ctx);
+    const r = g.compdb.result;
+    switch (g.compdb.action) {
+      case 'generated':
+        say(`compile_commands.json を生成しました (初回: ${r!.method}, ${r!.entries} 件)${r!.note ? ` — ${r!.note}` : ''}`);
+        break;
+      case 'regenerated':
+        say(`compile_commands.json を作り直しました (対象のファイルや設定が変わったため: ${r!.method}, ${r!.entries} 件)${r!.note ? ` — ${r!.note}` : ''}`);
+        break;
+      case 'unchanged':
+        say('compile_commands.json: 生成済みで、対象のファイルや設定に変更がないため、そのままにしました');
+        break;
+      case 'foreign':
+        say('compile_commands.json: 既にあるファイル (42 Check が作った記録がない) を上書きしませんでした。42 Check で作り直すには、コマンド「42 Check: compile_commands.json を再生成」を実行してください');
+        break;
+    }
+    say(g.clangd.action === 'generated' ? '.clangd を生成しました' : g.clangd.reason ? `.clangd: ${g.clangd.reason}` : '.clangd: 既にあるため、そのままにしました');
   } catch (e) {
     say(`警告: compile_commands.json を生成できませんでした: ${String(e)}`);
   }

@@ -1,9 +1,9 @@
 import * as fs from 'node:fs';
 import * as vscode from 'vscode';
-import { generateClangd, generateCompdb } from './core/compdb';
+import { ensureGenerated, STATE_DIR } from './core/compdb';
 import { createContext } from './core/context';
 import { shellQuoteArgs } from './core/launchConfig';
-import { dirSize } from './core/workdir';
+import { dirSize, resetWorkDir } from './core/workdir';
 import { readSettings, workspaceRoot } from './ui/config';
 import { Problems } from './ui/diagnostics';
 import { checkEnvironment } from './ui/envCheck';
@@ -61,10 +61,10 @@ export function activate(context: vscode.ExtensionContext): void {
       const ctx = createContext({ root, settings: readSettings(), io: { log: () => undefined } });
       try {
         fs.mkdirSync(ctx.workDir, { recursive: true });
-        const r = await generateCompdb(ctx);
-        const c = generateClangd(root);
+        const g = await ensureGenerated(ctx, { force: true });
+        const r = g.compdb.result!;
         void vscode.window.showInformationMessage(
-          `42 Check: compile_commands.json を再生成しました (${r.method}, ${r.entries} 件)。${c.written ? '.clangd も更新しました。' : (c.reason ?? '')}${r.note ? ` ${r.note}` : ''}`,
+          `42 Check: compile_commands.json を再生成しました (${r.method}, ${r.entries} 件)。${g.clangd.action === 'generated' ? '.clangd も更新しました。' : (g.clangd.reason ?? '')}${r.note ? ` ${r.note}` : ''}`,
         );
       } catch (e) {
         void vscode.window.showErrorMessage(`42 Check: 再生成に失敗しました: ${String(e)}`);
@@ -75,7 +75,7 @@ export function activate(context: vscode.ExtensionContext): void {
       if (!root) return;
       const ctx = createContext({ root, settings: readSettings(), io: { log: () => undefined } });
       const mb = Math.ceil(dirSize(ctx.workDir) / (1024 * 1024));
-      fs.rmSync(ctx.workDir, { recursive: true, force: true });
+      resetWorkDir(ctx.workDir, [STATE_DIR]); // 生成済みの記録 (state/) は残す (消すと、compile_commands.json を自分のものと見分けられなくなる)
       void vscode.window.showInformationMessage(`42 Check: .42check/ を削除しました (約 ${mb}MB)。`);
     }),
   );

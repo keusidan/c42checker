@@ -32,14 +32,14 @@ VS Code 上でしか確認できない項目は私の環境では実行できて
 
 チェック内容の判定は版によって差が出うる (特に clang-tidy / gcc -fanalyzer の検出)。上記の校舎の実測で、`-12` 系でも想定どおりだったことは確認済み。
 
-## 自動テスト (221 件)
+## 自動テスト (229 件)
 
 ```sh
 # norminette が PATH に必要。無い場合は該当項目が skip になる
 npm test        # = node esbuild.mjs --test && node --test "out-test/*.test.js"
 ```
 
-結果: **221 件中 221 件 pass、0 fail、0 skip** (2026-10-07、上記の環境)。
+結果: **229 件中 229 件 pass、0 fail、0 skip** (2026-10-07、上記の環境)。
 
 - `test/parse.test.ts`: 出力の parser (gcc / clang / UBSan / norminette (ANSI カラー除去) / ASan / LSan / valgrind)
 - `test/pipeline.test.ts`: fail-fast の制御 (fake step で、段階 1 失敗 → 段階 2 非実行 / `failFast: "step"` / skip は失敗ではない / 空き容量不足 / `.42check/` 上限超過)
@@ -56,6 +56,7 @@ npm test        # = node esbuild.mjs --test && node --test "out-test/*.test.js"
 - `test/includecheck.test.ts`: 使っていない include のコンパイラによる判定 (**本物の clang**)。関数・型・マクロ・定数 (`malloc` / `write` / `uint8_t` / `INT_MAX`)、名前の表にないプロジェクトのヘッダ (ctags 不要)、自分のヘッダを include する `.c`、提供する名前が重なる include (review)、重なりと未使用の混在、コメントによる理由づけ、ヘッダファイル (include 元の `.c` での使用)、外す前から fatal error のファイル、元のファイルを書き換えない・コピーを消す、clang が無いときの切り替え、step への反映
 - `test/includefix.test.ts`: 使っていない include の削除 (`normExtra.removeUnusedIncludes`)。行の削除と空行の詰め方 (CRLF 含む)・行番号のずれの補正、既定 (OFF) では書き換えない、ON で未使用だけを削除して変更前を退避・冪等、ヘッダ経由で使う include は残す、review (重なる include)・コメントで理由のある include・clang が無いときの表による判定は削除しない、未保存のファイルは書き換えない、**削除後の構文チェックが通らなければ全て元に戻す** (clang を差し替えて再現)、`normExtra.disable` で削除もしない
 - `test/includeperf.test.ts`: include の判定の高速化と二重指定の検出。名前で「使っている」と分かる include はコンパイルしない (絞り込み)・`size_t` のような複数ヘッダが提供する名前は証拠にしない・全て使っていればコピーもコンパイルもしない・コンパイル回数 (12 ファイルで 72 → 24 回)・並列でも結果が毎回同じ・include-what-you-use (ヘッダとソースの両方に書いた `<stdlib.h>` を未使用にしない)・ヘッダの確認で先頭の単位で必要と分かれば include 元をコンパイルしない、二重指定 (既定 OFF / ON で検出・推移的・同じファイルで 2 回・コメントによる理由・disable・step への反映・自動削除しない)
+- `test/generated.test.ts`: 生成ファイルを実行のたびに書き直さないこと。初回に `compile_commands.json` / `.clangd` / 記録を作る・2 回目以降は**中身も更新時刻も変わらない** (clangd が読み直さない)・記録 (`.42check/state/`) が `.42check/` の作り直しで消えない・対象の `.c` の増減 / cflags / Makefile (`make -n`) の変更では作り直し、`.c` の中身の編集 / 既存ディレクトリへのヘッダ追加 / 実行時の設定の変更では作り直さない・消したときは作る・自分で用意したファイルや手で直した `.clangd` は上書きしない・再生成コマンド (force) の挙動・指紋
 - `test/makefile.test.ts`: Makefile (Norm III.11) の検査。静的な読み取り (必須の規則・wildcard・同梱ライブラリの自動ビルド) と、**本物の make** での relink・all が既定・clean / fclean / re・make 自体の失敗の検出、元のプロジェクトにビルド成果物を作らないこと、Makefile が無いときの skip
 - `test/proto.test.ts`: プロトタイプ同期。ctags の出力の整形 (純粋関数)、マーカー処理、**本物の universal-ctags 5.9.0** での抽出 → norm 形式で書き込み → **norminette 通過** → 生成したヘッダでプロジェクトがコンパイルできる、冪等性、マーカー無し・壊れ・結果が空・宣言に直せない関数・ctags 無し / Exuberant 版・未保存のヘッダでヘッダが変わらないこと、段階 0 での同期
 - `test/toggles.test.ts`: 「設定」グループ 5 項目の双方向同期 (settings → チェック / チェック → settings、failFast の "step" / "stage" 変換)、既定がすべて OFF、トグルの対応表と package.json の整合
@@ -222,6 +223,7 @@ skip が残る場合は、その項目の Output Channel のログ (`$ setarch .
 
 **確認できていないこと**:
 - 実際の 42 の課題 (libft、minishell など) での**誤検知の率**。判定は、誤検知より見逃しを選ぶ側に倒していますが、実プロジェクトでの実測はしていません。続く誤検知は `c42check.normExtra.disable` で規則ごとに外せます
+- 実際の VS Code / clangd で、`compile_commands.json` を書き直さなくなったことによる再解析の減少 (更新時刻が変わらないことまでは、自動テストで確認)
 - 校舎の clang-12 での `unused-include` の判定 (本環境は clang 18)。診断が増えるかを比べる方式なので、版による warning / error の違い (暗黙の関数宣言など) には影響されない設計ですが、実機では未確認です
 - 削除機能を、実際の 42 の課題の `.c` / `.h` に使ったときの結果 (どの include が消えるか)。削除前に構文チェックが通っていることを確かめ、通らなくなれば元に戻す安全弁はありますが、リンクや実行時の挙動 (`#ifdef` で切り替わる実装など) までは確かめません。Git で差分を確認してください
 - VS Code のエディタが、書き換えたファイルを自動で読み直すこと (未保存の変更が無ければ、VS Code は外部の変更を読み直します)
