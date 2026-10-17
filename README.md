@@ -138,7 +138,7 @@ Makefile が無いプロジェクトでは skip です。Makefile が実行す�
 - **scan-build**: `make` の代わりに、`.c` を 1 つずつ `compile.cflags` つきでコンパイルして解析します (`useMakeCheckTarget` は使われません)。
 - **compile_commands.json**: `make -n` を読まず、ソース一覧 + `compile.cflags` から作ります (`compdb.source` が `make-n` でも)。
 - 警告強化ビルド・clang-tidy・`gcc -fanalyzer`・sanitizer・valgrind は、もともと Makefile を使わないので変わりません。
-- **Makefile (Norm III.11) の検査は、この設定の対象外です** (Makefile の中身を検査する項目なので)。止めるには `c42check.checks` の `makefile` を `false` にします。
+- **Makefile (Norm III.11) の検査**の項目も、skip になります (Makefile を使わない設定なので)。
 
 ```jsonc
 {
@@ -286,13 +286,14 @@ code --install-extension llvm-vs-code-extensions.vscode-clangd
 
 ### 設定のチェックボックス (View の「設定」グループ)
 
-次の 7 つを、settings.json を開かずに ON / OFF できます。状態は**ワークスペースの settings.json の対応キーと双方向に同期**します
-(View で変えると settings.json が書き換わり、settings.json を直接編集すると View のチェックが追従します)。**7 つとも既定は OFF** です。
+次の 8 つを、settings.json を開かずに ON / OFF できます。状態は**ワークスペースの settings.json の対応キーと双方向に同期**します
+(View で変えると settings.json が書き換わり、settings.json を直接編集すると View のチェックが追従します)。**8 つとも既定は OFF** です。
 
 | チェックボックス | 対応する設定キー |
 |---|---|
 | failFast を step にする | `c42check.failFast` (ON = `"step"` / OFF = `"stage"`) |
 | ASan 付きデバッグ | `c42check.debug.sanitizer` |
+| Makefile を無視する | `c42check.ignoreMakefile` |
 | Makefile の check ターゲットを使う | `c42check.useMakeCheckTarget` |
 | 実行時 (段階 0) にプロトタイプを同期 | `c42check.proto.syncOnRun` |
 | 保存時にプロトタイプを同期 | `c42check.proto.syncOnSave` |
@@ -369,7 +370,7 @@ code --install-extension llvm-vs-code-extensions.vscode-clangd
 | `c42check.includePaths` | `[]` | 追加の include path (`.h` を含むディレクトリは自動で追加) |
 | `c42check.runArgs` | `[]` | 動的チェックとデバッグの実行引数 |
 | `c42check.useMakeCheckTarget` | `false` | Makefile に `check` ターゲットがあれば、scan-build は `make` の代わりに `make check` を包んで実行 |
-| `c42check.ignoreMakefile` | `false` | Makefile があっても使わず、`compile.*` の引数と `.c` の一覧でビルドして検証する (scan-build と compile_commands.json に効く。Makefile の検査 (III.11) は別) |
+| `c42check.ignoreMakefile` | `false` | Makefile があっても使わず、`compile.*` の引数と `.c` の一覧でビルドして検証する (scan-build / compile_commands.json。Makefile の検査 (III.11) は skip) |
 | `c42check.failFast` | `"stage"` | `"stage"`: 段階内は全項目を実行 / `"step"`: 最初の失敗で止める |
 | `c42check.minFreeSpaceMB` | `200` | 空き容量の下限 (MB)。下回ると警告して中断 |
 | `c42check.workDirMaxMB` | `100` | `.42check/` の上限 (MB)。超えると警告して中断 |

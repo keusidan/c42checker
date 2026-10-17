@@ -404,6 +404,7 @@ const makefileStep: StepDef = {
   note: 'Norm III.11 の Makefile の規則を検査します: `$(NAME)` `all` `clean` `fclean` `re` の規則、make だけで all が動く、2 回目の make で relink しない、ソースを明示 (wildcard なし)、同梱のライブラリを自動でビルドする。プロジェクトのコピーで実際に make を動かします (元のファイルは変えません)。',
   prerequisite: (ctx) =>
     first(
+      ctx.settings.ignoreMakefile ? { reason: 'c42check.ignoreMakefile が ON のため、Makefile は検査しません', hint: 'Makefile も検査するには、設定 `c42check.ignoreMakefile` を OFF にしてください' } : undefined,
       projectMakefile(ctx) ? undefined : { reason: 'Makefile がありません', hint: 'Makefile を提出する課題だけが対象です' },
     ),
   async run(ctx) {
@@ -507,6 +508,7 @@ const scanBuild: StepDef = {
     };
 
     const makefile = ctx.hasMakefile ? findMakefile(ctx.targetRoot) : undefined; // ignoreMakefile が ON なら、Makefile があっても使わない
+    if (ctx.settings.ignoreMakefile) log += '(c42check.ignoreMakefile が ON のため、Makefile は使わず、.c を 1 つずつコンパイルします)\n';
     const targetCwd = path.join(copy, path.relative(ctx.root, ctx.targetRoot));
     if (makefile) {
       const target = ctx.settings.useMakeCheckTarget && makeTargetExists(makefile, 'check') ? ['check'] : [];

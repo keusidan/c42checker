@@ -36,6 +36,15 @@ export const TOGGLES: ToggleDef[] = [
     toConfig: (checked) => checked,
   },
   {
+    id: 'ignoreMakefile',
+    label: 'Makefile を無視する',
+    key: 'ignoreMakefile',
+    description: 'Makefile があっても使わず、compile.* の引数と .c の一覧でビルドして検証する (scan-build / compile_commands.json)。Makefile の検査 (Norm III.11) も skip にする',
+    defaultValue: false,
+    fromConfig: (v) => bool(v, false),
+    toConfig: (checked) => checked,
+  },
+  {
     id: 'useMakeCheckTarget',
     label: 'Makefile の check ターゲットを使う',
     key: 'useMakeCheckTarget',

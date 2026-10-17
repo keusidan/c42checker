@@ -27,13 +27,14 @@ const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'
   contributes: { configuration: { properties: Record<string, { default: unknown; type: string }> }; commands: { command: string }[] };
 };
 
-test('「設定」グループに、真偽値の設定 7 つが並ぶ (5 つは指定されたもの + include の削除と二重指定の検出)', () => {
+test('「設定」グループに、真偽値の設定 8 つが並ぶ (5 つは指定されたもの + include の削除と二重指定の検出 + Makefile を無視する)', () => {
   const t = tree();
   assert.deepEqual(
     settingItems(t).map((x) => x.item.label),
     [
       'failFast を step にする',
       'ASan 付きデバッグ',
+      'Makefile を無視する',
       'Makefile の check ターゲットを使う',
       '実行時 (段階 0) にプロトタイプを同期',
       '保存時にプロトタイプを同期',
@@ -43,7 +44,7 @@ test('「設定」グループに、真偽値の設定 7 つが並ぶ (5 つは�
   );
 });
 
-test('既定: 7 つともすべて OFF (プロトタイプの同期は実行時・保存時とも OFF。ソースを書き換える設定は全て OFF)', () => {
+test('既定: 8 つともすべて OFF (プロトタイプの同期は実行時・保存時とも OFF。ソースを書き換える設定は全て OFF)', () => {
   const t = tree();
   assert.ok(settingItems(t).every((x) => x.item.checkboxState === U.Unchecked));
   assert.equal(DEFAULT_SETTINGS.protoSyncOnRun, false);
@@ -57,6 +58,7 @@ test('設定 → チェックボックス: settings.json の値の変更が、�
   const t = tree();
   state.config['c42check.failFast'] = 'step';
   state.config['c42check.debug.sanitizer'] = true;
+  state.config['c42check.ignoreMakefile'] = true;
   state.config['c42check.useMakeCheckTarget'] = true;
   state.config['c42check.proto.syncOnRun'] = true;
   state.config['c42check.proto.syncOnSave'] = true;
@@ -77,9 +79,11 @@ test('チェックボックス → 設定: 対応するキーに書き込む (fa
   await t.onCheckbox([[items[4].node, U.Checked]]);
   await t.onCheckbox([[items[5].node, U.Checked]]);
   await t.onCheckbox([[items[6].node, U.Checked]]);
+  await t.onCheckbox([[items[7].node, U.Checked]]);
   assert.deepEqual(state.updates, [
     { key: 'c42check.failFast', value: 'step' },
     { key: 'c42check.debug.sanitizer', value: true },
+    { key: 'c42check.ignoreMakefile', value: true },
     { key: 'c42check.useMakeCheckTarget', value: true },
     { key: 'c42check.proto.syncOnRun', value: true },
     { key: 'c42check.proto.syncOnSave', value: true },

@@ -241,7 +241,7 @@
         "c42check.ignoreMakefile": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "`true` にすると、**Makefile があっても使わず**、`compile.*` の引数 (`cflags` / `ldflags` / `libs` / `perStep`) と見つけた `.c` の一覧でビルドして検証します。既定は `false`。\n\n- **scan-build**: `make` の代わりに、`.c` を 1 つずつ `compile.cflags` つきでコンパイルして解析します (`useMakeCheckTarget` は使われません)。\n- **compile_commands.json**: `make -n` を読まず、ソース一覧 + `compile.cflags` から作ります (`compdb.source` が `make-n` でも)。\n- **Makefile (Norm III.11) の検査**は、この設定の対象外です。止めるには `c42check.checks` の `makefile` を `false` にします。\n\nMakefile が壊れている・課題の途中で未完成・フラグを変えて試したい、というときに使います。"
+          "markdownDescription": "`true` にすると、**Makefile があっても使わず**、`compile.*` の引数 (`cflags` / `ldflags` / `libs` / `perStep`) と見つけた `.c` の一覧でビルドして検証します。既定は `false`。\n\n- **scan-build**: `make` の代わりに、`.c` を 1 つずつ `compile.cflags` つきでコンパイルして解析します (`useMakeCheckTarget` は使われません)。\n- **compile_commands.json**: `make -n` を読まず、ソース一覧 + `compile.cflags` から作ります (`compdb.source` が `make-n` でも)。\n- **Makefile (Norm III.11) の検査**の項目も、skip になります。\n\nMakefile が壊れている・課題の途中で未完成・フラグを変えて試したい、というときに使います。"
         },
         "c42check.failFast": {
           "type": "string",

@@ -303,6 +303,11 @@ test('ignoreMakefile: 壊れた Makefile があっても、compile.cflags とソ
   const direct = await argsOf(on.ctx);
   assert.doesNotMatch(direct, /make/, 'ON: make は呼ばない');
   assert.match(direct, /-DNEEDED=1 -c .*main\.c/, 'ON: compile.cflags つきで .c を直接コンパイルする');
+  const sb = await runPipeline({ ...on.ctx, tools: { ...on.ctx.tools, scanBuild: fake } }, { selected: ['scanBuild'] });
+  assert.match(log(sb, 'scanBuild'), /ignoreMakefile が ON のため、Makefile は使わず/, 'ログに、Makefile を使っていないことが出る');
+  const mk = await runPipeline(on.ctx, { selected: ['makefile'] });
+  assert.equal(status(mk, 'makefile'), 'skip', 'Makefile (III.11) の検査も skip');
+  assert.match(mk.results.find((x) => x.id === 'makefile')?.reason ?? '', /ignoreMakefile/);
   off.cleanup();
   on.cleanup();
 });

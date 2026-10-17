@@ -53,7 +53,7 @@ export interface Settings {
   includePaths: string[];
   runArgs: string[];
   useMakeCheckTarget: boolean;
-  /** true なら、Makefile があっても使わない (scan-build / compile_commands.json は、ソース一覧と compile.* の引数で動く) */
+  /** true なら、Makefile があっても使わない (scan-build / compile_commands.json は、ソース一覧と compile.* の引数で動く。Makefile の検査 (III.11) は skip) */
   ignoreMakefile: boolean;
   failFast: FailFast;
   minFreeSpaceMB: number;
