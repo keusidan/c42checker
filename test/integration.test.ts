@@ -4,6 +4,7 @@ import * as assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { test } from 'node:test';
+import { createContext } from '../src/core/context';
 import { runPipeline } from '../src/core/pipeline';
 import { DEFAULT_CHECKS, STEP_IDS, type Context, type StepId, type Tools } from '../src/core/types';
 import { sampleContext } from './helpers';
@@ -192,4 +193,37 @@ test('既定では TSan / MSan は OFF (チェックを入れたときだけ実�
   };
   const d = pkg.contributes.configuration.properties['c42check.checks'].default;
   assert.deepEqual([d.tsan, d.msan, d.asanUbsan], [false, false, true]);
+});
+
+test('norminette.ignoreParameterErrors: 引数についての指摘 (TOO_MANY_ARGS / NO_ARGS_VOID) だけを除く。他の指摘は残る', async (t) => {
+  const probe = sampleContext('ok');
+  if (!need(probe.ctx, 'norminette')) {
+    probe.cleanup();
+    return t.skip('norminette が無い');
+  }
+  const header = fs.readFileSync(path.join(probe.dir, 'str_utils.c'), 'utf8').split('\n').slice(0, 11).join('\n').replace('str_utils.c   ', 'args.c       ');
+  const argsOnly = `${header}\n\nint\tadd_five(int first, int second, int third, int fourth, int fifth)\n{\n\treturn (first + second + third + fourth + fifth);\n}\n\nint\tzero()\n{\n\treturn (0);\n}\n`;
+  const withOther = argsOnly.replace('int\tzero()', 'int \tzero()'); // SPACE_BEFORE_FUNC など、引数以外の指摘も加える
+  const run = async (text: string, ignore: boolean) => {
+    const { ctx, dir, cleanup } = sampleContext('ok');
+    fs.writeFileSync(path.join(dir, 'args.c'), text);
+    const c = createContext({ root: dir, settings: { ...ctx.settings, norminetteIgnoreParameterErrors: ignore }, tools: ctx.tools, io: ctx.io });
+    const r = await runPipeline(c, { selected: ['norminette'] });
+    cleanup();
+    return r.results.find((x) => x.id === 'norminette')!;
+  };
+  probe.cleanup();
+
+  const off = await run(argsOnly, false);
+  assert.equal(off.status, 'fail');
+  assert.deepEqual(off.diags.map((d) => d.message.split(':')[0]).sort(), ['NO_ARGS_VOID', 'TOO_MANY_ARGS']);
+
+  const on = await run(argsOnly, true);
+  assert.equal(on.status, 'pass', on.log);
+  assert.deepEqual(on.diags, []);
+  assert.match(on.log, /引数についての指摘を 2 件、結果から除きました/);
+
+  const mixed = await run(withOther, true);
+  assert.equal(mixed.status, 'fail', '引数以外の指摘が残れば fail のまま');
+  assert.ok(mixed.diags.length > 0 && mixed.diags.every((d) => !/TOO_MANY_ARGS|NO_ARGS_VOID/.test(d.message)), mixed.diags.map((d) => d.message).join('\n'));
 });

@@ -10,7 +10,9 @@ import { judgeIncludes } from './includecheck';
 import { applyRemovals, shiftLine } from './includefix';
 import { listIncludes, MANUAL_ITEMS, normExtra, resolveLocal, RULES, suspectIncludes, type Finding } from './normextra';
 import {
+  NORMINETTE_PARAMETER_CODES,
   dedupe,
+  dropNorminetteErrors,
   parseCbmc,
   parseCompilerOutput,
   parseFramaC,
@@ -217,9 +219,20 @@ const norminette: StepDef = {
     const bin = ctx.tools.norminette!;
     const args = [...stepArgs(ctx, 'norminette'), ...files];
     const r = await exec(bin, args, { cwd: ctx.root, timeoutMs: staticMs(ctx), signal: ctx.signal });
-    const diags = parseNorminette(r.output, ctx.root);
-    const out = cmdline(bin, args) + stripAnsi(r.output);
-    return verdict(r.code, diags, out, { error: r.error, timedOut: r.timedOut });
+    let output = stripAnsi(r.output);
+    let code = r.code;
+    let note = '';
+    if (ctx.settings.norminetteIgnoreParameterErrors) {
+      // 関数の引数についての指摘 (TOO_MANY_ARGS など) は、結果から除く。他の指摘が残らなければ、終了コードの失敗も取り消す
+      const f = dropNorminetteErrors(output, NORMINETTE_PARAMETER_CODES);
+      if (f.dropped > 0) {
+        output = f.text;
+        if (f.remaining === 0 && !/: Error!$/m.test(f.text) && !r.error && !r.timedOut) code = 0;
+        note = `(c42check.norminette.ignoreParameterErrors: 関数の引数についての指摘を ${f.dropped} 件、結果から除きました: ${NORMINETTE_PARAMETER_CODES.join(' / ')})\n`;
+      }
+    }
+    const diags = parseNorminette(output, ctx.root);
+    return verdict(code, diags, cmdline(bin, args) + note + output, { error: r.error, timedOut: r.timedOut });
   },
 };
 
@@ -493,7 +506,7 @@ const scanBuild: StepDef = {
       timedOut ||= r.timedOut;
     };
 
-    const makefile = findMakefile(ctx.targetRoot);
+    const makefile = ctx.hasMakefile ? findMakefile(ctx.targetRoot) : undefined; // ignoreMakefile が ON なら、Makefile があっても使わない
     const targetCwd = path.join(copy, path.relative(ctx.root, ctx.targetRoot));
     if (makefile) {
       const target = ctx.settings.useMakeCheckTarget && makeTargetExists(makefile, 'check') ? ['check'] : [];
@@ -503,7 +516,7 @@ const scanBuild: StepDef = {
         targetCwd,
       );
     } else {
-      // Makefile が無ければ、.c を 1 つずつ ccc-analyzer でコンパイルする
+      // Makefile が無い (または ignoreMakefile が ON) なら、.c を 1 つずつ ccc-analyzer でコンパイルする
       for (const file of ctx.sources) {
         const rel = path.join(copy, path.relative(ctx.root, file));
         await run(

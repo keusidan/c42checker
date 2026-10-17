@@ -53,6 +53,8 @@ export interface Settings {
   includePaths: string[];
   runArgs: string[];
   useMakeCheckTarget: boolean;
+  /** true なら、Makefile があっても使わない (scan-build / compile_commands.json は、ソース一覧と compile.* の引数で動く) */
+  ignoreMakefile: boolean;
   failFast: FailFast;
   minFreeSpaceMB: number;
   workDirMaxMB: number;
@@ -71,6 +73,8 @@ export interface Settings {
   /** 同じ関数がマーカーの外 (手書き) で既に宣言されていれば、ブロックには入れない */
   protoSkipExisting: boolean;
   /** コンパイル引数 (VS Code の settings.json の c42check.compile.* / clangTidy.* / valgrind.*) */
+  /** true なら、norminette の関数の引数についての指摘 (TOO_MANY_ARGS など) を結果から除く */
+  norminetteIgnoreParameterErrors: boolean;
   /** norminette と c_formatter_42 の対象から外すファイル (パターン)。既定: main.c */
   normExclude: string[];
   /** normExtra (Norm の (*) 規則) の検査から外す規則の id */
@@ -117,6 +121,7 @@ export const DEFAULT_SETTINGS: Settings = {
   includePaths: [],
   runArgs: [],
   useMakeCheckTarget: false,
+  ignoreMakefile: false,
   failFast: 'stage',
   minFreeSpaceMB: 200,
   workDirMaxMB: 100,
@@ -131,6 +136,7 @@ export const DEFAULT_SETTINGS: Settings = {
   protoSyncOnRun: false,
   protoSyncOnSave: false,
   protoSkipExisting: true,
+  norminetteIgnoreParameterErrors: false,
   normExclude: ['main.c'],
   normExtraDisable: [],
   normExtraReviewAsFail: false,
@@ -181,6 +187,7 @@ export interface Context {
   includeDirs: string[]; // 絶対パス
   hasMain: boolean;
   mainFile?: string; // 設定された mainFile (絶対)。存在する場合のみ
+  /** 対象に Makefile があり、かつ設定 ignoreMakefile が OFF (ON なら、Makefile があっても false) */
   hasMakefile: boolean;
   io: RunIO;
   signal?: AbortSignal;

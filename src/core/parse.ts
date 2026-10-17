@@ -100,6 +100,47 @@ export function parseNorminette(text: string, baseDir: string): Diag[] {
   return diags;
 }
 
+/** norminette の、関数の引数についての指摘のコード (TOO_MANY_ARGS: 5 個以上 / NO_ARGS_VOID: 空なら void / MISSING_IDENTIFIER: 引数名や型の欠け / ARG_TYPE_UKN: 引数の型を認識できない) */
+export const NORMINETTE_PARAMETER_CODES: readonly string[] = ['TOO_MANY_ARGS', 'NO_ARGS_VOID', 'MISSING_IDENTIFIER', 'ARG_TYPE_UKN'];
+
+/**
+ * norminette の出力から、指定したコードの指摘の行を取り除く (ANSI カラーも除く)。取り除いた結果、指摘が 1 つも残らなくなったファイルの見出しは `OK!` に直す。
+ * dropped は取り除いた件数、remaining は残った指摘 (Error / Notice) の件数。
+ */
+export function dropNorminetteErrors(text: string, codes: readonly string[]): { text: string; dropped: number; remaining: number } {
+  const lines = stripAnsi(text).split('\n');
+  const drop = new Set<number>();
+  // 見出しの行番号 → そのファイルで残った指摘の数 / 取り除いた指摘の数
+  const sections = new Map<number, { left: number; dropped: number }>();
+  let head = -1;
+  let remaining = 0;
+  lines.forEach((raw, i) => {
+    const line = raw.replace(/\r$/, '');
+    if (/^(.+?): (OK!|Error!)$/.test(line)) {
+      head = i;
+      sections.set(head, { left: 0, dropped: 0 });
+      return;
+    }
+    const m = /^(Error|Notice): (\w+)\s+\(line:/.exec(line);
+    if (!m) return;
+    const sec = sections.get(head);
+    if (codes.includes(m[2])) {
+      drop.add(i);
+      if (sec) sec.dropped++;
+    } else {
+      remaining++;
+      if (sec) sec.left++;
+    }
+  });
+  const out: string[] = [];
+  lines.forEach((raw, i) => {
+    if (drop.has(i)) return;
+    const sec = sections.get(i);
+    out.push(sec && sec.dropped > 0 && sec.left === 0 ? raw.replace(/Error!(\r?)$/, 'OK!$1') : raw);
+  });
+  return { text: out.join('\n'), dropped: drop.size, remaining };
+}
+
 function isInside(root: string, file: string): boolean {
   const rel = path.relative(root, file);
   return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel);

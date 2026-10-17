@@ -1,6 +1,8 @@
 import * as assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  NORMINETTE_PARAMETER_CODES,
+  dropNorminetteErrors,
   parseCompilerOutput,
   parseNorminette,
   parseSanitizer,
@@ -104,4 +106,22 @@ test('MSan: 最初の root 内 frame (libc 側の相対パスは root 内と誤�
   ].join('\n');
   const d = parseSanitizer(out, '/w');
   assert.deepEqual([d.length, d[0].line, d[0].message], [1, 3, 'MemorySanitizer: use-of-uninitialized-value']);
+});
+
+test('norminette: 関数の引数についての指摘だけを除く。指摘が残らなくなったファイルは OK! にする', () => {
+  const out = [
+    'a.c: Error!',
+    'Error: TOO_MANY_ARGS        (line:  13, col:  70):\t\u001b[91mFunction has more than 4 arguments\u001b[0m',
+    'Error: NO_ARGS_VOID         (line:  18, col:  10):\tEmpty function argument requires void',
+    'b.c: Error!',
+    'Error: TOO_MANY_ARGS        (line:   3, col:  20):\tFunction has more than 4 arguments',
+    'Error: SPACE_BEFORE_FUNC    (line:   5, col:   4):\tFound space',
+    'c.c: OK!',
+    '',
+  ].join('\n');
+  const r = dropNorminetteErrors(out, NORMINETTE_PARAMETER_CODES);
+  assert.deepEqual([r.dropped, r.remaining], [3, 1]);
+  assert.equal(r.text, ['a.c: OK!', 'b.c: Error!', 'Error: SPACE_BEFORE_FUNC    (line:   5, col:   4):\tFound space', 'c.c: OK!', ''].join('\n'));
+  assert.deepEqual(parseNorminette(r.text, '/w').map((d) => d.message), ['SPACE_BEFORE_FUNC: Found space']);
+  assert.deepEqual(dropNorminetteErrors('a.c: OK!\n', NORMINETTE_PARAMETER_CODES), { text: 'a.c: OK!\n', dropped: 0, remaining: 0 }, '何も無ければそのまま');
 });

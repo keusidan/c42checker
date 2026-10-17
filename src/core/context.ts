@@ -37,7 +37,7 @@ export function createContext(input: ContextInput): Context {
     includeDirs: collectIncludeDirs(root, targetRoot, headers, settings.includePaths),
     hasMain: sources.some((s) => s !== mainFile && definesMain(s)),
     mainFile,
-    hasMakefile: !!findMakefile(targetRoot),
+    hasMakefile: !settings.ignoreMakefile && !!findMakefile(targetRoot),
     io: input.io,
     signal: input.signal,
     isFileDirty: input.isFileDirty,

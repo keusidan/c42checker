@@ -32,25 +32,25 @@ VS Code 上でしか確認できない項目は私の環境では実行できて
 
 チェック内容の判定は版によって差が出うる (特に clang-tidy / gcc -fanalyzer の検出)。上記の校舎の実測で、`-12` 系でも想定どおりだったことは確認済み。
 
-## 自動テスト (231 件)
+## 自動テスト (236 件)
 
 ```sh
 # norminette が PATH に必要。無い場合は該当項目が skip になる
 npm test        # = node esbuild.mjs --test && node --test "out-test/*.test.js"
 ```
 
-結果: **231 件中 231 件 pass、0 fail、0 skip** (2026-10-07、上記の環境)。
+結果: **236 件中 236 件 pass、0 fail、0 skip** (2026-10-07、上記の環境)。
 
-- `test/parse.test.ts`: 出力の parser (gcc / clang / UBSan / norminette (ANSI カラー除去) / ASan / LSan / valgrind)
+- `test/parse.test.ts`: 出力の parser (gcc / clang / UBSan / norminette (ANSI カラー除去) / ASan / LSan / valgrind)。norminette の出力から、関数の引数についての指摘 (`TOO_MANY_ARGS` など) だけを除き、残らなくなったファイルを `OK!` にする処理
 - `test/pipeline.test.ts`: fail-fast の制御 (fake step で、段階 1 失敗 → 段階 2 非実行 / `failFast: "step"` / skip は失敗ではない / 空き容量不足 / `.42check/` 上限超過)
 - `test/compdb.test.ts`: `compile_commands.json` の生成 (files / make-n / clang-MJ / auto の 4 方式)、`mainFile` の include 切り替え、`.clangd` を他人のものは上書きしない
-- `test/integration.test.ts`: **実際のツール**で samples を検証 (下表)
+- `test/integration.test.ts`: **実際のツール**で samples を検証 (下表)。本物の norminette で、`norminette.ignoreParameterErrors` が引数の指摘 (5 個の引数・空の引数) だけを除き、他の指摘が残れば fail のままであること
 - `test/launch.test.ts`: launch.json / tasks.json の生成とマージ (既存項目は変更しない)
 - `test/setarch.test.ts` の「案内文」: TSan / MSan が起動できず skip になったときの対処案が、setarch -R で回避済みか・setarch が無いか・setarch が使えないか、に合わせて変わること (古い「sudo sysctl (校舎では不可)」を出さないこと)
 - `test/protoui.test.ts`: 「ヘッダにプロトタイプを反映」の UI の流れ。差分エディタを開くだけでヘッダは変えないこと、**通知を出さないこと**、**無題のドキュメントを作らないこと** (`Untitled-1.c` の保存ダイアログの原因)、「反映する」でヘッダが書き換わり差分エディタが閉じること、「キャンセル」と × で閉じたときの扱い、前の案を閉じて 1 つだけ開くこと、差分を開いている間のヘッダの変更・未保存の変更の検出、norminette が指摘したときだけ通知して「元に戻す」で戻ること
 - `test/exclude.test.ts`: `c42check.normExclude` (既定 `main.c`)。パターンの一致規則 (ファイル名 / 相対パス / ディレクトリ / glob)、norminette と c_formatter_42 から外れること、サブディレクトリの `main.c` と `/main.c` の違い、**他のチェック (警告強化ビルド) は除外したファイルにも効くこと**、全て除外されたときの skip、**プロトタイプ同期でも除外したファイルの関数を拾わないこと**、既定値と VS Code の設定からの読み込み
 - `test/setarch.test.ts`: TSan / MSan の `setarch -R` 経由の起動。本物の setarch で ASLR が実際に止まること (スタック位置が毎回同じ)、`setarch <arch> -R <prog>` の引数、personality を変えられない環境での再実行、setarch が無い環境、ASan と valgrind は使わないこと、繰り返し実行しても毎回検出すること
-- `test/compileargs.test.ts`: コンパイル引数の設定。引数の正規化 (`${workspaceFolder}` の展開、shell 風の分割、shell を介さないこと)、静的ライブラリ `libfoo.a` を使った `-L` / `-l` の検証 (指定が無ければリンク失敗、`ldflags` に `-l` を書くと失敗、`libs` なら成功)、`-D` が必須の課題が全ての項目で通ること、`compile_commands.json` への反映、`perStep` / `warningFlags` / `clangTidy.checks` / `valgrind.args`、VS Code の設定からの読み込みと型が違うときの既定値への戻り、package.json の既定値と DEFAULT_SETTINGS の一致
+- `test/compileargs.test.ts`: コンパイル引数の設定。引数の正規化 (`${workspaceFolder}` の展開、shell 風の分割、shell を介さないこと)、静的ライブラリ `libfoo.a` を使った `-L` / `-l` の検証 (指定が無ければリンク失敗、`ldflags` に `-l` を書くと失敗、`libs` なら成功)、`-D` が必須の課題が全ての項目で通ること、`compile_commands.json` への反映、`perStep` / `warningFlags` / `clangTidy.checks` / `valgrind.args`、VS Code の設定からの読み込みと型が違うときの既定値への戻り、package.json の既定値と DEFAULT_SETTINGS の一致、`ignoreMakefile` (壊れた Makefile があっても `compile_commands.json` と scan-build が `compile.cflags` で動く。偽の scan-build の引数で、`make` を呼ばず `.c` を直接コンパイルすることを確認)
 - `test/formatter.test.ts`: c_formatter_42 (0.2.8)。norminette の前に実行される順序、norm 違反が減ること、退避、冪等性、**整形でコードが壊れたら元に戻して fail** (長い文字列リテラル / include の順序依存)、未保存ファイルの skip、ツール無しの skip、`.clang-format` に触れないこと、TSan / MSan の起動時 SEGV の判定
 - `test/normextra.test.ts`: Norm v4.1 の (*) 規則の検査。字句読み取り (コメント / 文字列 / 関数定義 / 引数 / ローカル変数)、規則ごとの error と review の判定 (ヘッダの関数定義、使っていない include (標準ヘッダ・**本物の ctags** によるプロジェクトのヘッダ・コメントによる理由づけ)、42 ヘッダ (marvin・学生メール・日時・更新 < 作成)、`#define` (制御構文・三項演算子・代入・関数形式・定数でない値)、コメント (日本語・空・TODO・コメントアウトしたコード・norm の言い訳)、名前 (関数・変数・ファイル))、`normExtra.disable`、引数名を検査するかのオプション (`ft_memcmp` の `s1` / `s2`。ローカル変数は引き続き検査)、全サンプルで error が出ないこと、error / review / `reviewAsFail` / `normExclude` / 全て除外で skip / 段階 1 の fail が段階 2 を止めること、規則の一覧と package.json の一致
 - `test/includecheck.test.ts`: 使っていない include のコンパイラによる判定 (**本物の clang**)。関数・型・マクロ・定数 (`malloc` / `write` / `uint8_t` / `INT_MAX`)、名前の表にないプロジェクトのヘッダ (ctags 不要)、自分のヘッダを include する `.c`、提供する名前が重なる include (review)、重なりと未使用の混在、コメントによる理由づけ、ヘッダファイル (include 元の `.c` での使用)、外す前から fatal error のファイル、元のファイルを書き換えない・コピーを消す、clang が無いときの切り替え、step への反映

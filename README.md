@@ -122,6 +122,32 @@ OFF のままなら、ヘッダとソースの両方に書いてあっても、�
 
 Makefile が無いプロジェクトでは skip です。Makefile が実行する命令 (`git clone` など) も、そのまま動く点に注意してください (コピーの中で実行し、`c42check.staticTimeoutSec` で打ち切ります)。
 
+### 関数の引数についての norminette の指摘を除く
+
+`c42check.norminette.ignoreParameterErrors` (既定: `false`) を `true` にすると、norminette の指摘のうち**関数の引数についてのもの**を結果から除きます。
+
+- 除くのは `TOO_MANY_ARGS` (引数が 5 個以上) / `NO_ARGS_VOID` (引数が空なのに `void` がない) / `MISSING_IDENTIFIER` (引数の型や名前の欠け) / `ARG_TYPE_UKN` (引数の型を認識できない) です。他の指摘は、そのまま残ります。
+- 除いた結果、他の指摘が残らなければ、norminette の項目は pass になります。除いた件数は、項目のログに出ます。
+- 引数の**名前**を見る `bad-variable-name` は別の設定です: `c42check.normExtra.checkParameterNames` を `false` にします。
+- Norm は関数の引数を 4 個までと定めていて、評価では指摘されます。課題の仕様で引数が増える場合などにだけ使ってください。
+
+### Makefile を使わずにビルドオプションを指定する
+
+`c42check.ignoreMakefile` (既定: `false`) を `true` にすると、**Makefile があっても使わず**、`c42check.compile.*` (`cflags` / `ldflags` / `libs` / `perStep`) と、見つけた `.c` の一覧でビルドして検証します。Makefile が壊れている・未完成のとき、フラグを変えて試したいときに使います。
+
+- **scan-build**: `make` の代わりに、`.c` を 1 つずつ `compile.cflags` つきでコンパイルして解析します (`useMakeCheckTarget` は使われません)。
+- **compile_commands.json**: `make -n` を読まず、ソース一覧 + `compile.cflags` から作ります (`compdb.source` が `make-n` でも)。
+- 警告強化ビルド・clang-tidy・`gcc -fanalyzer`・sanitizer・valgrind は、もともと Makefile を使わないので変わりません。
+- **Makefile (Norm III.11) の検査は、この設定の対象外です** (Makefile の中身を検査する項目なので)。止めるには `c42check.checks` の `makefile` を `false` にします。
+
+```jsonc
+{
+  "c42check.ignoreMakefile": true,
+  "c42check.compile.cflags": ["-DDEBUG", "-I${workspaceFolder}/includes"],
+  "c42check.compile.libs": ["-lbsd"]
+}
+```
+
 ### コンパイル引数 (`-lbsd` など)
 
 `-lbsd` / `-lm` / `-DDEBUG` / `-L...` のような引数は、VS Code の設定 (`settings.json`、または設定画面で「c42check」を検索) から指定できます。
@@ -343,11 +369,13 @@ code --install-extension llvm-vs-code-extensions.vscode-clangd
 | `c42check.includePaths` | `[]` | 追加の include path (`.h` を含むディレクトリは自動で追加) |
 | `c42check.runArgs` | `[]` | 動的チェックとデバッグの実行引数 |
 | `c42check.useMakeCheckTarget` | `false` | Makefile に `check` ターゲットがあれば、scan-build は `make` の代わりに `make check` を包んで実行 |
+| `c42check.ignoreMakefile` | `false` | Makefile があっても使わず、`compile.*` の引数と `.c` の一覧でビルドして検証する (scan-build と compile_commands.json に効く。Makefile の検査 (III.11) は別) |
 | `c42check.failFast` | `"stage"` | `"stage"`: 段階内は全項目を実行 / `"step"`: 最初の失敗で止める |
 | `c42check.minFreeSpaceMB` | `200` | 空き容量の下限 (MB)。下回ると警告して中断 |
 | `c42check.workDirMaxMB` | `100` | `.42check/` の上限 (MB)。超えると警告して中断 |
 | `c42check.runTimeoutSec` | `10` | 動的チェックの実行の制限時間 (秒。valgrind は 5 倍)。超過は skip |
 | `c42check.staticTimeoutSec` | `120` | 静的チェック各ツールの制限時間 (秒) |
+| `c42check.norminette.ignoreParameterErrors` | `false` | norminette の、関数の引数についての指摘 (`TOO_MANY_ARGS` など) を結果から除く |
 | `c42check.normExclude` | `["main.c"]` | norminette と c_formatter_42 の対象から外すファイル (ファイル名 / 相対パスの glob) |
 | `c42check.mainFile` | `""` | main を持たない課題用のテスト main |
 | `c42check.compdb.includeMain` | `true` | `mainFile` を `compile_commands.json` に含めるか |
@@ -388,7 +416,7 @@ Node.js 22 以上が必要です (`.nvmrc`、`package.json` の `engines`)。
 npm ci
 npm run typecheck   # tsc --noEmit
 npm run build       # esbuild で dist/extension.js に bundle
-npm test            # 231 件。実際のツール (norminette / clang / valgrind など) があれば使い、無ければ該当項目は skip
+npm test            # 236 件。実際のツール (norminette / clang / valgrind など) があれば使い、無ければ該当項目は skip
 npm run package     # .vsix を作る
 ```
 

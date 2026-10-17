@@ -148,7 +148,8 @@ export async function generateCompdb(ctx: Context): Promise<CompdbResult> {
   let entries: CompdbEntry[] = [];
   let note: string | undefined;
 
-  const tryMake = want === 'make-n' || (want === 'auto' && ctx.hasMakefile);
+  // ignoreMakefile が ON なら、compdb.source が make-n でも Makefile は使わない (files 方式になる)
+  const tryMake = !ctx.settings.ignoreMakefile && (want === 'make-n' || (want === 'auto' && ctx.hasMakefile));
   if (tryMake) {
     entries = await entriesFromMakeN(ctx);
     method = 'make-n';
@@ -213,7 +214,7 @@ const sha1 = (text: string) => crypto.createHash('sha1').update(text).digest('he
  * (clangd は compile_commands.json が書き換わるたびに読み直すので、内容が同じなのに書き直すと、無駄に再解析させてしまう)
  */
 export function compdbFingerprint(ctx: Context): string {
-  const makefile = findMakefile(ctx.targetRoot);
+  const makefile = ctx.hasMakefile ? findMakefile(ctx.targetRoot) : undefined;
   let makefileHash = '';
   if (makefile) {
     try {
@@ -233,6 +234,7 @@ export function compdbFingerprint(ctx: Context): string {
       make: !!ctx.tools.make,
       settings: {
         source: ctx.settings.compdbSource,
+        ...(ctx.settings.ignoreMakefile ? { ignoreMakefile: true } : {}), // OFF のときは載せない (指紋が変わって、内容が同じなのに作り直されるのを避ける)
         includeMain: ctx.settings.compdbIncludeMain,
         cflags: ctx.settings.compileCflags,
         includePaths: ctx.settings.includePaths,

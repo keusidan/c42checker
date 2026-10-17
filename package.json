@@ -238,6 +238,11 @@
           "default": false,
           "description": "true かつ Makefile に check ターゲットがある場合、scan-build は `make` ではなく `make check` を包んで実行します。"
         },
+        "c42check.ignoreMakefile": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "`true` にすると、**Makefile があっても使わず**、`compile.*` の引数 (`cflags` / `ldflags` / `libs` / `perStep`) と見つけた `.c` の一覧でビルドして検証します。既定は `false`。\n\n- **scan-build**: `make` の代わりに、`.c` を 1 つずつ `compile.cflags` つきでコンパイルして解析します (`useMakeCheckTarget` は使われません)。\n- **compile_commands.json**: `make -n` を読まず、ソース一覧 + `compile.cflags` から作ります (`compdb.source` が `make-n` でも)。\n- **Makefile (Norm III.11) の検査**は、この設定の対象外です。止めるには `c42check.checks` の `makefile` を `false` にします。\n\nMakefile が壊れている・課題の途中で未完成・フラグを変えて試したい、というときに使います。"
+        },
         "c42check.failFast": {
           "type": "string",
           "enum": [
@@ -542,6 +547,11 @@
             }
           },
           "default": {}
+        },
+        "c42check.norminette.ignoreParameterErrors": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "`true` にすると、norminette の指摘のうち、**関数の引数についてのもの**を結果から除きます。既定は `false`。\n\n- `TOO_MANY_ARGS` (引数が 5 個以上) / `NO_ARGS_VOID` (引数が空なのに `void` がない) / `MISSING_IDENTIFIER` (引数の型や名前の欠け) / `ARG_TYPE_UKN` (引数の型を認識できない)\n- 除いた結果、他の指摘が残らなければ、norminette の項目は pass になります。除いた件数はログに出ます。\n- 引数の**名前**を検査する `normExtra` の `bad-variable-name` は、`normExtra.checkParameterNames` で別に切り替えます。\n\nNorm 自体は、関数の引数を 4 個までと定めています。評価では指摘されるので、課題の仕様で引数が増える場合などにだけ使ってください。"
         },
         "c42check.normExclude": {
           "type": "array",

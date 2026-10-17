@@ -7,7 +7,7 @@ import * as path from 'node:path';
 import { test } from 'node:test';
 import * as vscode from 'vscode';
 import { normalizeArgs, shellSplit } from '../src/core/args';
-import { generateCompdb } from '../src/core/compdb';
+import { compdbFingerprint, generateCompdb } from '../src/core/compdb';
 import { runPipeline } from '../src/core/pipeline';
 import { DEFAULT_SETTINGS, STEP_IDS, type Context, type Settings, type StepId, type Tools } from '../src/core/types';
 import { readSettings } from '../src/ui/config';
@@ -259,4 +259,68 @@ test('package.json のスキーマと既定値: DEFAULT_SETTINGS と一致し、
   assert.deepEqual(p['c42check.valgrind.args'].default, d.valgrindArgs);
   assert.deepEqual(Object.keys(p['c42check.compile.perStep'].properties ?? {}).sort(), [...STEP_IDS].sort(), '全ての項目名が補完に出る');
   assert.equal(p['c42check.compile.perStep'].additionalProperties, false, '項目名の書き間違いを警告できる');
+});
+
+/* ───────── ignoreMakefile ───────── */
+
+// make を呼ぶと失敗する Makefile (壊れている / 未完成の課題を想定)
+const BROKEN_MAKEFILE = 'all:\n\t@echo "Makefile is broken" >&2; exit 1\n';
+
+test('ignoreMakefile: 壊れた Makefile があっても、compile.cflags とソース一覧で compile_commands.json と scan-build が動く', async (t) => {
+  const make = (overrides: Partial<Settings>) => {
+    const r = sampleContext('ok', { compileCflags: ['-DNEEDED=1'], ...overrides }, REMOVE_STR_UTILS);
+    writeMain(r.dir, NEEDS_DEFINE);
+    fs.writeFileSync(path.join(r.dir, 'Makefile'), BROKEN_MAKEFILE);
+    return r;
+  };
+  const off = make({ compdbSource: 'make-n' });
+  const on = make({ compdbSource: 'make-n', ignoreMakefile: true });
+  if (!need(off.ctx, 'cc')) return t.skip('clang が無い');
+  assert.equal(off.ctx.hasMakefile, true);
+  assert.equal(on.ctx.hasMakefile, false, 'ignoreMakefile が ON なら、Makefile があっても無いものとして扱う');
+  assert.notEqual(compdbFingerprint(off.ctx), compdbFingerprint(on.ctx), '設定を変えたら、compile_commands.json を作り直す');
+  assert.equal(compdbFingerprint(off.ctx), compdbFingerprint(make({ compdbSource: 'make-n' }).ctx), 'OFF のままなら指紋は変わらない');
+
+  // compile_commands.json: compdb.source が make-n でも、Makefile は読まない
+  fs.mkdirSync(on.ctx.workDir, { recursive: true });
+  const r = await generateCompdb(on.ctx);
+  assert.equal(r.method, 'files');
+  assert.equal(r.note, undefined, 'make -n に失敗して切り替えたのではなく、最初から使っていない');
+  const db = JSON.parse(fs.readFileSync(path.join(on.dir, 'compile_commands.json'), 'utf8')) as { arguments: string[] }[];
+  assert.ok(db.length > 0 && db.every((e) => e.arguments.includes('-DNEEDED=1')), 'compile.cflags が入る');
+
+  // scan-build: 偽の scan-build に渡された引数で、make を呼んだか / .c を直接コンパイルしたかを見る
+  const called = path.join(on.dir, 'scan-build-args.txt');
+  const fake = path.join(on.dir, 'fake-scan-build');
+  fs.writeFileSync(fake, `#!/bin/sh\nprintf '%s\\n' "$*" >> "${called}"\nexit 0\n`, { mode: 0o755 });
+  const argsOf = async (ctx: Context) => {
+    fs.rmSync(called, { force: true });
+    const res = await runPipeline({ ...ctx, tools: { ...ctx.tools, scanBuild: fake } }, { selected: ['scanBuild'] });
+    assert.equal(status(res, 'scanBuild'), 'pass', log(res, 'scanBuild'));
+    return fs.readFileSync(called, 'utf8');
+  };
+  if (need(off.ctx, 'make')) assert.match(await argsOf(off.ctx), /exec make -B/, 'OFF: Makefile を make で動かす');
+  const direct = await argsOf(on.ctx);
+  assert.doesNotMatch(direct, /make/, 'ON: make は呼ばない');
+  assert.match(direct, /-DNEEDED=1 -c .*main\.c/, 'ON: compile.cflags つきで .c を直接コンパイルする');
+  off.cleanup();
+  on.cleanup();
+});
+
+test('ignoreMakefile: 設定 c42check.ignoreMakefile と norminette.ignoreParameterErrors を VS Code の設定から読む。既定は OFF で、package.json と一致', () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')) as {
+    contributes: { configuration: { properties: Record<string, { default: unknown; type: string }> } };
+  };
+  const p = pkg.contributes.configuration.properties;
+  assert.deepEqual([p['c42check.ignoreMakefile'].type, p['c42check.ignoreMakefile'].default], ['boolean', DEFAULT_SETTINGS.ignoreMakefile]);
+  assert.deepEqual(
+    [p['c42check.norminette.ignoreParameterErrors'].type, p['c42check.norminette.ignoreParameterErrors'].default],
+    ['boolean', DEFAULT_SETTINGS.norminetteIgnoreParameterErrors],
+  );
+  assert.deepEqual([DEFAULT_SETTINGS.ignoreMakefile, DEFAULT_SETTINGS.norminetteIgnoreParameterErrors], [false, false]);
+  state.config = {};
+  assert.deepEqual([readSettings().ignoreMakefile, readSettings().norminetteIgnoreParameterErrors], [false, false]);
+  state.config = { 'c42check.ignoreMakefile': true, 'c42check.norminette.ignoreParameterErrors': true };
+  assert.deepEqual([readSettings().ignoreMakefile, readSettings().norminetteIgnoreParameterErrors], [true, true]);
+  state.config = {};
 });
