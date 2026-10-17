@@ -244,3 +244,16 @@ test('ヘッダの include を確かめるとき、先頭の単位 (そのヘッ
   assert.deepEqual(unusedLines(s), []);
   cleanup();
 });
+
+test('<stddef.h> は size_t を使っていれば必要 (<stdlib.h> など、他のヘッダが size_t を提供していても未使用にしない)。size_t を使わない <stddef.h> は未使用', async (t) => {
+  const { ctx, cleanup } = project({
+    'libft.h': '#ifndef LIBFT_H\n# define LIBFT_H\n\n# include <stddef.h>\n# include <stdlib.h>\n\nsize_t\tft_len(const char *str);\n\n#endif\n',
+    'a.c': '#include "libft.h"\n\nsize_t\tft_len(const char *str)\n{\n\tvoid\t*p;\n\n\tp = malloc(1);\n\tfree(p);\n\treturn (0);\n}\n',
+    'b.c': '#include <stddef.h>\n\nint\tft_b(void)\n{\n\treturn (0);\n}\n',
+  });
+  if (!need(ctx)) return t.skip('clang が無い');
+  const s = step(await runPipeline(ctx, { selected: ['normExtra'] }));
+  assert.deepEqual(unusedLines(s, 'libft.h'), [], s.log);
+  assert.deepEqual(unusedLines(s, 'b.c'), [1], 'size_t などを使っていない <stddef.h> は未使用');
+  cleanup();
+});

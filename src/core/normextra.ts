@@ -9,7 +9,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { findFunctions, identifiers, localNames, parameterNames, preprocessorLines, scanC, withoutPreprocessor, type CScan } from './cscan';
-import { isKnownSystemHeader, STD_CONSTANTS, STD_HEADERS, WEAK_SYMBOLS } from './stdsyms';
+import { isKnownSystemHeader, isOwnerHeader, STD_CONSTANTS, STD_HEADERS, WEAK_SYMBOLS } from './stdsyms';
 
 export type RuleId =
   | 'header-content'
@@ -413,8 +413,9 @@ function usageOf(p: Parsed, inc: IncludeRef, input: NormExtraInput, cache: Map<s
   if (!provided) return 'unknown'; // 表にない / ctags が無い / プロジェクト外
   const hits = [...provided].filter((s) => used.has(s));
   if (hits.length === 0) return 'unused';
-  // size_t / NULL のように、複数のヘッダが提供する名前だけを使っているときは、このヘッダが必要かは名前からは決められない
-  return inc.system && hits.every((s) => WEAK_SYMBOLS.has(s)) ? 'unknown' : 'used';
+  // size_t / NULL のように、複数のヘッダが提供する名前だけを使っているときは、このヘッダが必要かは名前からは決められない。
+  // ただし、その名前を定義する本家のヘッダ (size_t なら <stddef.h>) は、使っていれば必要
+  return inc.system && hits.every((s) => WEAK_SYMBOLS.has(s) && !isOwnerHeader(inc.name, s)) ? 'unknown' : 'used';
 }
 
 /** 判定に使う識別子: そのファイル自身 + (ヘッダなら) そのヘッダを include している全ファイル */

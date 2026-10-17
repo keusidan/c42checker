@@ -99,3 +99,16 @@ export const WEAK_SYMBOLS: ReadonlySet<string> = (() => {
   for (const list of Object.values(STD_HEADERS)) for (const n of new Set(list)) count.set(n, (count.get(n) ?? 0) + 1);
   return new Set([...count].filter(([, c]) => c >= 2).map(([n]) => n));
 })();
+
+/**
+ * 名前を定義する「本家」の標準ヘッダ。size_t / NULL などは stdio.h や stdlib.h も提供するが、C 標準が定義の場所としているのは stddef.h。
+ * 本家の include は、その名前を 1 つでも使っていれば「使っている」とみなす (他のヘッダが同じ名前を提供していても、未使用にしない)。
+ */
+const OWNER_HEADERS: Record<string, string[]> = {
+  'stddef.h': w('size_t ptrdiff_t wchar_t NULL offsetof max_align_t'),
+};
+
+/** header が、symbol を定義する本家のヘッダか */
+export function isOwnerHeader(header: string, symbol: string): boolean {
+  return OWNER_HEADERS[header]?.includes(symbol) ?? false;
+}
