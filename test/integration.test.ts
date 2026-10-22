@@ -217,9 +217,15 @@ test('norminette.ignoreParameterErrors: 引数についての指摘 (TOO_MANY_AR
   const off = await run(argsOnly, false);
   assert.equal(off.status, 'fail');
   assert.deepEqual(off.diags.map((d) => d.message.split(':')[0]).sort(), ['NO_ARGS_VOID', 'TOO_MANY_ARGS']);
+  // ログ: 問題のないファイルは出さず、指摘は Ctrl+クリックで開ける パス:行:列 の形で出す
+  assert.match(off.log, /^args\.c:13:70: TOO_MANY_ARGS: Function has more than 4 arguments$/m);
+  assert.match(off.log, /^args\.c:18:10: NO_ARGS_VOID: /m);
+  assert.doesNotMatch(off.log.split('\n').slice(1).join('\n'), /OK!|str_utils|main\.c/, '問題のないファイルは出さない (1 行目はコマンドライン)');
+  assert.match(off.log, /2 件の指摘 \(1 \/ 4 ファイル\)/);
 
   const on = await run(argsOnly, true);
   assert.equal(on.status, 'pass', on.log);
+  assert.match(on.log, /問題はありません \(4 ファイル\)/);
   assert.deepEqual(on.diags, []);
   assert.match(on.log, /引数についての指摘を 2 件、結果から除きました/);
 

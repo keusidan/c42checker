@@ -204,6 +204,19 @@ async function syntaxCheck(ctx: Context): Promise<{ checked: boolean; ok: boolea
   return { checked: true, ok: r.code === 0 && !r.error, output: r.output, diags };
 }
 
+/**
+ * norminette のログ。問題のないファイル (`x.c: OK!`) は出さず、指摘は `パス:行:列: メッセージ` の形で出す
+ * (Output の `パス:行:列` は、Ctrl+クリックでその場所を開ける)。指摘を読み取れなかった出力は、隠さず元のまま出す。
+ */
+function norminetteLog(diags: Diag[], output: string, code: number | null, fileCount: number, root: string): string {
+  if (diags.length === 0) {
+    return code === 0 && !/Error!/.test(output) ? `問題はありません (${fileCount} ファイル)\n` : output;
+  }
+  const lines = diags.map((d) => `${path.relative(root, d.file)}:${d.line}:${d.col}: ${d.message}`);
+  const files = new Set(diags.map((d) => d.file)).size;
+  return `${lines.join('\n')}\n\n${diags.length} 件の指摘 (${files} / ${fileCount} ファイル)。パス:行:列 は Ctrl+クリックで開けます\n`;
+}
+
 const norminette: StepDef = {
   id: 'norminette',
   label: 'norminette',
@@ -232,7 +245,7 @@ const norminette: StepDef = {
       }
     }
     const diags = parseNorminette(output, ctx.root);
-    return verdict(code, diags, cmdline(bin, args) + note + output, { error: r.error, timedOut: r.timedOut });
+    return verdict(code, diags, cmdline(bin, args) + note + norminetteLog(diags, output, code, files.length, ctx.root), { error: r.error, timedOut: r.timedOut });
   },
 };
 
@@ -364,14 +377,19 @@ const normExtraStep: StepDef = {
       source: 'norm-extra',
     }));
 
-    log += '\n検査する規則 (error = fail / review = 人の目で確認):\n';
+    // 指摘を先頭に出す (パス:行 は Ctrl+クリックで開ける)。問題のない規則は 1 行にまとめる
+    log += '\n';
+    if (findings.length === 0) log += '指摘はありません\n';
+    for (const f of findings) log += `${path.relative(ctx.root, f.file)}:${f.line}: ${f.strength} [${f.rule}] ${f.message}\n`;
+    log += '\n検査した規則 (error = fail / review = 人の目で確認):\n';
+    const clean: string[] = [];
     for (const r of RULES) {
       const mine = findings.filter((f) => f.rule === r.id);
-      const state = disabled.has(r.id) ? '無効 (設定で除外)' : mine.length === 0 ? 'OK' : `${mine.filter((f) => f.strength === 'error').length} error / ${mine.filter((f) => f.strength === 'review').length} review`;
-      log += `  [${r.id}] Norm ${r.norm}: ${r.title} → ${state}\n`;
+      if (disabled.has(r.id)) log += `  [${r.id}] Norm ${r.norm}: ${r.title} → 無効 (設定で除外)\n`;
+      else if (mine.length === 0) clean.push(`[${r.id}]`);
+      else log += `  [${r.id}] Norm ${r.norm}: ${r.title} → ${mine.filter((f) => f.strength === 'error').length} error / ${mine.filter((f) => f.strength === 'review').length} review\n`;
     }
-    log += '\n';
-    for (const f of findings) log += `${path.relative(ctx.root, f.file)}:${f.line}: ${f.strength} [${f.rule}] ${f.message}\n`;
+    if (clean.length > 0) log += `  問題なし: ${clean.join(' ')}\n`;
     log += `\n--- 機械では判定できない項目 (評価で人が見ます。提出前に自分で確認してください) ---\n`;
     for (const m of MANUAL_ITEMS) log += `  [ ] ${m.norm}: ${m.text}\n`;
 
