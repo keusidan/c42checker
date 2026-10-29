@@ -1,0 +1,4 @@
+{
+  "c42check.mainFile": "tests/test_main.c",
+  "c42check.compdb.includeMain": true
+}
