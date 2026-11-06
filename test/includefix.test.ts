@@ -62,7 +62,7 @@ test('既定 (OFF) では、未使用の include があっても、ファイル�
   cleanup();
 });
 
-test('ON: 未使用の include だけを削除し、変更前を .42check/include-backup/ に退避する。使っているものは残り、step は pass になる', async (t) => {
+test('ON: 未使用の include だけを削除し、変更前を .c42checker/include-backup/ に退避する。使っているものは残り、step は pass になる', async (t) => {
   const { ctx, read, cleanup } = project({ 'a.c': A_C });
   if (!need(ctx)) return t.skip('clang が無い');
   const s = step(await runPipeline(ctx, { selected: ['normExtra'] }));
@@ -148,12 +148,12 @@ test('ON: エディタに未保存の変更があるファイルは書き換え�
   assert.equal(s.status, 'fail');
   assert.match(s.log, /未保存の変更があるため、削除しなかった include: a\.c:2/);
   assert.ok(s.diags.some((d) => d.file.endsWith('a.c') && /unused-include/.test(d.message)));
-  assert.ok(fs.existsSync(path.join(dir, '.42check', 'include-backup', 'b.c')));
+  assert.ok(fs.existsSync(path.join(dir, '.c42checker', 'include-backup', 'b.c')));
   cleanup();
 });
 
 test('ON: 削除した後にプロジェクト全体の構文チェックが通らなくなったら、全て元に戻す', async (t) => {
-  // 実際の clang に委ねつつ、プロジェクト全体の構文チェック (.42check の外) だけ、a.c が <stdio.h> を include していなければ失敗させる
+  // 実際の clang に委ねつつ、プロジェクト全体の構文チェック (.c42checker の外) だけ、a.c が <stdio.h> を include していなければ失敗させる
   const dir0 = fs.mkdtempSync(path.join(os.tmpdir(), 'c42-fakecc-'));
   const realCc = detectTools().cc;
   if (!realCc) return t.skip('clang が無い');

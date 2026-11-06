@@ -58,7 +58,7 @@ export async function runStep(ctx: Context, step: StepDef): Promise<StepResult> 
   }
 }
 
-/** デバッグ用ビルド (.42check/debug/prog)。段階 3 の直前に行う。 */
+/** デバッグ用ビルド (.c42checker/debug/prog)。段階 3 の直前に行う。 */
 export async function buildDebug(ctx: Context): Promise<StepResult> {
   const t0 = Date.now();
   const label = 'デバッグ用ビルド';
@@ -116,13 +116,13 @@ export async function runPipeline(ctx: Context, req: PipelineRequest, hooks: Pip
     if (size <= maxBytes) return undefined;
     return toResult(
       'prepare',
-      '.42check/ の容量',
+      '.c42checker/ の容量',
       stage,
       {
         status: 'fail',
         diags: [],
-        log: `.42check/ が ${Math.ceil(size / MB)}MB で、上限 ${ctx.settings.workDirMaxMB}MB を超えました\n`,
-        reason: `.42check/ が上限 ${ctx.settings.workDirMaxMB}MB を超えました (${Math.ceil(size / MB)}MB)`,
+        log: `.c42checker/ が ${Math.ceil(size / MB)}MB で、上限 ${ctx.settings.workDirMaxMB}MB を超えました\n`,
+        reason: `.c42checker/ が上限 ${ctx.settings.workDirMaxMB}MB を超えました (${Math.ceil(size / MB)}MB)`,
         hint: '設定 `c42checker.workDirMaxMB` を見直すか、巨大なビルド成果物が出ていないか確認してください',
       },
       0,

@@ -2,11 +2,12 @@ import * as fs from 'node:fs';
 import * as vscode from 'vscode';
 import { ensureGenerated, STATE_DIR } from './core/compdb';
 import { createContext } from './core/context';
+import { applyMigration, describePlan, isEmptyPlan, planMigration } from './core/migrate';
 import { shellQuoteArgs } from './core/launchConfig';
 import { STEPS } from './core/steps';
 import { STEP_IDS, type StepId } from './core/types';
 import { dirSize, resetWorkDir } from './core/workdir';
-import { readSettings, workspaceRoot } from './ui/config';
+import { isFileDirty, readSettings, workspaceRoot } from './ui/config';
 import { Problems } from './ui/diagnostics';
 import { checkEnvironment } from './ui/envCheck';
 import { generateDebugConfig, proposeAbortOnTaskErrors, suggestAbortIfNeeded } from './ui/launchGen';
@@ -28,6 +29,59 @@ async function pickStep(): Promise<StepId | undefined> {
     { title: '実行する項目を選んでください (チェックの状態に関係なく、この項目だけ実行します)', matchOnDetail: true },
   );
   return pick?.id;
+}
+
+const MIGRATION_DECLINED = 'c42checker.migrationDeclined';
+
+/**
+ * 改名前 (c42check / .42check) の設定・task・launch・.gitignore・作業ディレクトリを、c42checker の名前に書き換える。
+ * 書き換える内容を示して、承認を取ってから行う。interactive が false (起動時の案内) のときは、見つからなくても何も言わない。
+ */
+export async function migrateFromOldName(runner: Runner, outputs: Outputs, interactive = true): Promise<void> {
+  const root = workspaceRoot();
+  if (!root) {
+    if (interactive) void vscode.window.showErrorMessage('c42checker: フォルダを開いてから実行してください。');
+    return;
+  }
+  if (runner.isRunning) {
+    void vscode.window.showWarningMessage('c42checker: 検証の実行中は書き換えられません。終わってからもう一度実行してください。');
+    return;
+  }
+  const plan = planMigration(root);
+  if (isEmptyPlan(plan)) {
+    if (interactive) void vscode.window.showInformationMessage('c42checker: 旧名称 (c42check / .42check) のものは見つかりませんでした。');
+    return;
+  }
+  const pick = await vscode.window.showWarningMessage(
+    `旧名称 (c42check) を c42checker に書き換えます。\n\n${describePlan(root, plan).map((l) => `・${l}`).join('\n')}`,
+    { modal: true },
+    '書き換える',
+  );
+  if (pick !== '書き換える') return;
+  const result = applyMigration(root, plan, isFileDirty);
+  const out = outputs.get('移行');
+  out.appendLine(result.lines.join('\n'));
+  if (result.skipped.length > 0) {
+    void vscode.window.showWarningMessage(`c42checker: 未保存の変更があるため、${result.skipped.length} 件を書き換えませんでした。保存してからもう一度実行してください。`, 'ログを表示').then((p) => p && out.show(true));
+  } else {
+    void vscode.window.showInformationMessage(`c42checker: 書き換えました (${result.lines.length} 件)。`, 'ログを表示').then((p) => p && out.show(true));
+  }
+}
+
+/** 起動時: 旧名称のものが見つかったら、1 度だけ案内する (「今後は表示しない」で止められる)。 */
+export async function suggestMigration(state: vscode.Memento, run: () => Promise<void>): Promise<void> {
+  const root = workspaceRoot();
+  if (!root || state.get<boolean>(MIGRATION_DECLINED)) return;
+  if (isEmptyPlan(planMigration(root))) return;
+  const migrate = '書き換える';
+  const never = '今後は表示しない';
+  const pick = await vscode.window.showInformationMessage(
+    'c42checker: 旧名称 (c42check) の設定または作業ディレクトリ (.42check) が見つかりました。新しい名称に書き換えますか?',
+    migrate,
+    never,
+  );
+  if (pick === migrate) await run();
+  else if (pick === never) await state.update(MIGRATION_DECLINED, true);
 }
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -66,6 +120,7 @@ export function activate(context: vscode.ExtensionContext): void {
       const id = stepIdOf(arg) ?? (await pickStep());
       if (id) await runner.run('check', undefined, [id]);
     }),
+    reg('c42checker.migrateFromOldName', () => migrateFromOldName(runner, outputs)),
     reg('c42checker.cancel', () => runner.cancel()),
     reg('c42checker.refresh', () => tree.refresh()),
     reg('c42checker.syncPrototypes', () => proto.runCommand()),
@@ -97,10 +152,14 @@ export function activate(context: vscode.ExtensionContext): void {
       const ctx = createContext({ root, settings: readSettings(), io: { log: () => undefined } });
       const mb = Math.ceil(dirSize(ctx.workDir) / (1024 * 1024));
       resetWorkDir(ctx.workDir, [STATE_DIR]); // 生成済みの記録 (state/) は残す (消すと、compile_commands.json を自分のものと見分けられなくなる)
-      void vscode.window.showInformationMessage(`c42checker: .42check/ を削除しました (約 ${mb}MB)。`);
+      void vscode.window.showInformationMessage(`c42checker: .c42checker/ を削除しました (約 ${mb}MB)。`);
     }),
   );
 
+  void suggestMigration(context.workspaceState, async () => {
+    await migrateFromOldName(runner, outputs, false);
+    tree.refresh();
+  });
   void checkEnvironment(context.workspaceState);
   void suggestAbortIfNeeded(context.workspaceState);
 }

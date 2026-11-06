@@ -109,7 +109,7 @@ test('c_formatter_42: main.c は整形しない (1 バイトも変わらない)�
   assert.equal(read(dir, 'main.c'), mainBefore, 'main.c は整形されない');
   assert.doesNotMatch(f.log.split('\n')[0], /main\.c/, 'c_formatter_42 に渡すファイルから外れている');
   assert.notEqual(read(dir, 'str_utils.c'), suBefore, '他のファイルは整形される');
-  assert.equal(fs.existsSync(path.join(dir, '.42check', 'format-backup', 'main.c')), false);
+  assert.equal(fs.existsSync(path.join(dir, '.c42checker', 'format-backup', 'main.c')), false);
   cleanup();
 });
 

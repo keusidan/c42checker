@@ -32,17 +32,17 @@ VS Code 上でしか確認できない項目は私の環境では実行できて
 
 チェック内容の判定は版によって差が出うる (特に clang-tidy / gcc -fanalyzer の検出)。上記の校舎の実測で、`-12` 系でも想定どおりだったことは確認済み。
 
-## 自動テスト (251 件)
+## 自動テスト (260 件)
 
 ```sh
 # norminette が PATH に必要。無い場合は該当項目が skip になる
 npm test        # = node esbuild.mjs --test && node --test "out-test/*.test.js"
 ```
 
-結果: **251 件中 251 件 pass、0 fail、0 skip** (2026-10-07、上記の環境)。
+結果: **260 件中 260 件 pass、0 fail、0 skip** (2026-10-07、上記の環境)。
 
 - `test/parse.test.ts`: 出力の parser (gcc / clang / UBSan / norminette (ANSI カラー除去) / ASan / LSan / valgrind)。norminette の出力から、関数の引数についての指摘 (`TOO_MANY_ARGS` など) だけを除き、残らなくなったファイルを `OK!` にする処理
-- `test/pipeline.test.ts`: fail-fast の制御 (fake step で、段階 1 失敗 → 段階 2 非実行 / `failFast: "step"` / skip は失敗ではない / 空き容量不足 / `.42check/` 上限超過)
+- `test/pipeline.test.ts`: fail-fast の制御 (fake step で、段階 1 失敗 → 段階 2 非実行 / `failFast: "step"` / skip は失敗ではない / 空き容量不足 / `.c42checker/` 上限超過)
 - `test/compdb.test.ts`: `compile_commands.json` の生成 (files / make-n / clang-MJ / auto の 4 方式)、`mainFile` の include 切り替え、`.clangd` を他人のものは上書きしない
 - `test/integration.test.ts`: **実際のツール**で samples を検証 (下表)。本物の norminette で、`norminette.ignoreParameterErrors` が引数の指摘 (5 個の引数・空の引数) だけを除き、他の指摘が残れば fail のままであること
 - `test/launch.test.ts`: launch.json / tasks.json の生成とマージ (既存項目は変更しない)
@@ -56,18 +56,18 @@ npm test        # = node esbuild.mjs --test && node --test "out-test/*.test.js"
 - `test/includecheck.test.ts`: 使っていない include のコンパイラによる判定 (**本物の clang**)。関数・型・マクロ・定数 (`malloc` / `write` / `uint8_t` / `INT_MAX`)、名前の表にないプロジェクトのヘッダ (ctags 不要)、自分のヘッダを include する `.c`、提供する名前が重なる include (review)、重なりと未使用の混在、コメントによる理由づけ、ヘッダファイル (include 元の `.c` での使用)、外す前から fatal error のファイル、元のファイルを書き換えない・コピーを消す、clang が無いときの切り替え、step への反映
 - `test/includefix.test.ts`: 使っていない include の削除 (`normExtra.removeUnusedIncludes`)。行の削除と空行の詰め方 (CRLF 含む)・行番号のずれの補正、既定 (OFF) では書き換えない、ON で未使用だけを削除して変更前を退避・冪等、ヘッダ経由で使う include は残す、review (重なる include)・コメントで理由のある include・clang が無いときの表による判定は削除しない、未保存のファイルは書き換えない、**削除後の構文チェックが通らなければ全て元に戻す** (clang を差し替えて再現)、`normExtra.disable` で削除もしない
 - `test/includeperf.test.ts`: include の判定の高速化と二重指定の検出。名前で「使っている」と分かる include はコンパイルしない (絞り込み)・`size_t` のような複数ヘッダが提供する名前は証拠にしない・全て使っていればコピーもコンパイルもしない・コンパイル回数 (12 ファイルで 72 → 24 回)・並列でも結果が毎回同じ・include-what-you-use (ヘッダとソースの両方に書いた `<stdlib.h>` を未使用にしない)・ヘッダの確認で先頭の単位で必要と分かれば include 元をコンパイルしない、二重指定 (既定 OFF / ON で検出・推移的・同じファイルで 2 回・コメントによる理由・disable・step への反映・自動削除しない)
-- `test/generated.test.ts`: 生成ファイルを実行のたびに書き直さないこと。初回に `compile_commands.json` / `.clangd` / 記録を作る・2 回目以降は**中身も更新時刻も変わらない** (clangd が読み直さない)・記録 (`.42check/state/`) が `.42check/` の作り直しで消えない・対象の `.c` の増減 / cflags / Makefile (`make -n`) の変更では作り直し、`.c` の中身の編集 / 既存ディレクトリへのヘッダ追加 / 実行時の設定の変更では作り直さない・消したときは作る・自分で用意したファイルや手で直した `.clangd` は上書きしない・再生成コマンド (force) の挙動・指紋
+- `test/generated.test.ts`: 生成ファイルを実行のたびに書き直さないこと。初回に `compile_commands.json` / `.clangd` / 記録を作る・2 回目以降は**中身も更新時刻も変わらない** (clangd が読み直さない)・記録 (`.c42checker/state/`) が `.c42checker/` の作り直しで消えない・対象の `.c` の増減 / cflags / Makefile (`make -n`) の変更では作り直し、`.c` の中身の編集 / 既存ディレクトリへのヘッダ追加 / 実行時の設定の変更では作り直さない・消したときは作る・自分で用意したファイルや手で直した `.clangd` は上書きしない・再生成コマンド (force) の挙動・指紋
 - `test/makefile.test.ts`: Makefile (Norm III.11) の検査。静的な読み取り (必須の規則・wildcard・同梱ライブラリの自動ビルド) と、**本物の make** での relink・all が既定・clean / fclean / re・make 自体の失敗の検出、元のプロジェクトにビルド成果物を作らないこと、Makefile が無いときの skip
 - `test/proto.test.ts`: プロトタイプ同期。ctags の出力の整形 (純粋関数)、マーカー処理、**本物の universal-ctags 5.9.0** での抽出 → norm 形式で書き込み → **norminette 通過** → 生成したヘッダでプロジェクトがコンパイルできる、冪等性、マーカー無し・壊れ・結果が空・宣言に直せない関数・ctags 無し / Exuberant 版・未保存のヘッダでヘッダが変わらないこと、段階 0 での同期
 - `test/toggles.test.ts`: 「設定」グループ 5 項目の双方向同期 (settings → チェック / チェック → settings、failFast の "step" / "stage" 変換)、既定がすべて OFF、トグルの対応表と package.json の整合
-- `test/workdir.test.ts`: rclone マウントの判定、`.gitignore` への追記、`.42check/` の作り直しと安全装置、容量計測、scan-build 用コピー
+- `test/workdir.test.ts`: rclone マウントの判定、`.gitignore` への追記、`.c42checker/` の作り直しと安全装置、容量計測、scan-build 用コピー
 - `test/ui.test.ts`: Runner / TaskProvider の制御フロー。`vscode` module を**最小の stub に差し替えて**実行する。VS Code 本体の挙動は検証していない
 
 ## 指示された 6 項目
 
 ### 1. 正常なサンプルで段階 0〜3 がすべて通る — 段階 0〜2 とデバッグ用ビルドまで ✅ / 段階 3 (デバッガ起動) ❌ 未実行
 
-`samples/ok` で、準備 → norminette → 警告強化ビルド → clang-tidy → scan-build → gcc -fanalyzer → ASan + UBSan → valgrind → デバッグ用ビルド (`.42check/debug/prog`) が**すべて pass**
+`samples/ok` で、準備 → norminette → 警告強化ビルド → clang-tidy → scan-build → gcc -fanalyzer → ASan + UBSan → valgrind → デバッグ用ビルド (`.c42checker/debug/prog`) が**すべて pass**
 (テスト `正常なサンプル: 段階 0〜2 がすべて通る` と `pre-debug (正常)`)。
 `samples/lib-ok` (main 無しのライブラリ課題) も、`c42checker.mainFile` を指定すると動的チェックとデバッグ用ビルドまで pass。
 
@@ -80,7 +80,7 @@ npm test        # = node esbuild.mjs --test && node --test "out-test/*.test.js"
 - 段階 1 の norminette が fail。同じ段階の警告強化ビルドなどは実行され pass (`failFast: "stage"`)
 - 段階 2 (ASan / valgrind) とデバッグ用ビルドは**実行されない** (結果に出ず、「実行していません (前の失敗のため)」と表示)
 - norminette の診断 (`INVALID_HEADER`、`SPACE_BEFORE_FUNC` など) が行・列つきで取れる
-- Task 経由 (`pre-debug`) の終了コードは **1**、`.42check/debug/prog` は**作られない**
+- Task 経由 (`pre-debug`) の終了コードは **1**、`.c42checker/debug/prog` は**作られない**
 
 補足の実測:
 
@@ -94,7 +94,7 @@ npm test        # = node esbuild.mjs --test && node --test "out-test/*.test.js"
 確認できていること (stub での検証):
 
 - `preLaunchTask` に相当する Task (`c42checker` type) が、失敗時に**終了コード非 0** で閉じる
-- 失敗時は `.42check/` を最初に削除するため、**`.42check/debug/prog` が存在しない**。
+- 失敗時は `.c42checker/` を最初に削除するため、**`.c42checker/debug/prog` が存在しない**。
   万一 VS Code が「Debug Anyway」でデバッガを起動しても、CodeLLDB は存在しない `program` を起動できない (二重の保険)
 
 確認できていないこと: VS Code 本体が、`preLaunchTask` の非 0 終了と `debug.onTaskErrors: "abort"` を受けてデバッガ起動を止めること。
@@ -156,7 +156,7 @@ CodeLLDB と clangd は別計測で、校舎の実機での実測は CodeLLDB 16
 確認できたこと (本環境: clang 18.1.3、universal-ctags 5.9.0、norminette 3.3.60。上記の自動テストによる):
 
 - TSan が `samples/bug-tsan` のデータ競合を、MSan が `samples/bug-msan` の未初期化読み取りを検出し、位置 (行・列) に診断が付く。正常なサンプルは両方とも pass
-- TSan / MSan / ASan+UBSan を同時にチェックすると、項目ごとに別ビルド (`.42check/asan|tsan|msan/prog`) で順に実行され、判定も独立 (bug-tsan では TSan だけが fail)
+- TSan / MSan / ASan+UBSan を同時にチェックすると、項目ごとに別ビルド (`.c42checker/asan|tsan|msan/prog`) で順に実行され、判定も独立 (bug-tsan では TSan だけが fail)
 - プロトタイプ同期は、生成されたヘッダが norminette を通り、プロジェクトがコンパイルできる。マーカーが無い / 結果が空などの異常系では、ヘッダが 1 バイトも変わらない
 
 **まだ確認できていないこと**:
@@ -173,7 +173,7 @@ CodeLLDB と clangd は別計測で、校舎の実機での実測は CodeLLDB 16
 
 - `samples/norm-ng` (文字列を短くしたもの) を整形すると、`INVALID_HEADER` 以外の norm 違反がすべて直る。norm 準拠の `samples/ok` は、`#include` の並びだけが変わり、norminette と警告強化ビルドを通る
 - **80 桁を超える文字列リテラルでコードが壊れる** (1 回目でリテラルの途中に改行、2 回目でさらに崩れる) ことを実際に確認し、構文チェックで検出して元に戻す安全装置を入れた
-- c_formatter_42 は cwd の `.clang-format` を差し替える実装 (ソースを確認) なので、`.42check/format-cwd/` で実行し、ワークスペースの `.clang-format` を保護している
+- c_formatter_42 は cwd の `.clang-format` を差し替える実装 (ソースを確認) なので、`.c42checker/format-cwd/` で実行し、ワークスペースの `.clang-format` を保護している
 - プロトタイプ同期のブロックと、c_formatter_42 は干渉しない
 
 **未確認**: 校舎での c_formatter_42 の導入 (pip / pipx が使えるか、home の容量)、VS Code 上での操作。
@@ -186,7 +186,7 @@ CodeLLDB と clangd は別計測で、校舎の実機での実測は CodeLLDB 16
 - 起動時に SEGV で落ち、(a) sanitizer の報告が無い、または (b) スタックがプロジェクトのコードを含まず sanitizer のランタイム内だけ、の場合は、環境の問題として **skip** にする (`isSanitizerStartupCrash`)
 - ユーザーのコードが落ちた場合 (スタックにプロジェクトのフレームがある) は、これまでどおり fail
 
-実機の MSan のログ (`.42check/` の出力、または失敗した項目の Output Channel) を確認できたら、この判定を実際の出力に合わせて見直す。
+実機の MSan のログ (`.c42checker/` の出力、または失敗した項目の Output Channel) を確認できたら、この判定を実際の出力に合わせて見直す。
 
 ## TSan / MSan の確率的な skip (校舎の実機での報告) と setarch -R
 
@@ -258,3 +258,9 @@ skip が残る場合は、その項目の Output Channel のログ (`$ setarch .
 設定 `c42checker.proto.header` は以前からあったが、settings.json を手で書く必要があった。View の「ヘッダ」グループの「反映先のヘッダ」(コマンド `c42checker.selectProtoHeader`) で、ワークスペースの全ての `.h` から選び、ワークスペースの設定に相対パスで保存する。
 自動テスト (stub の QuickPick) で確認したこと: 一覧の先頭が「自動で選ぶ」で、マーカーのあるヘッダが先 / 現在の指定に「現在」が付く / 選ぶと `c42checker.proto.header` に相対パスが保存される / 「自動」で空に戻る / キャンセルでは何も書かない / 選んだヘッダが次の「ヘッダにプロトタイプを反映」の対象になり、もう一方のヘッダは触られない / ツリーの項目が現在の指定を表示する。
 **未確認**: 実際の VS Code での QuickPick とツリー項目の表示 (stub のため)。ご提示の `libft.h` のように、手書きの宣言とマーカーのブロックが 1 つのヘッダにある形は、これまでと同じく扱える。
+
+## 名称の統一 (c42check → c42checker) と、旧名称からの書き換えコマンド (利用者の要望)
+
+設定キー・コマンド ID・View・task の種類・作業ディレクトリ (`.42check/` → `.c42checker/`) を新しい名前にした。リリースは `.vsix` だけを公開する (`.github/workflows`) ため、書き換えは単体のスクリプトではなく、拡張機能のコマンド `c42checker.migrateFromOldName` として同梱した。起動時に旧名称が見つかると、1 度だけ案内する (「今後は表示しない」で止められる)。
+自動テスト (一時ディレクトリ上の実ファイル) で確認したこと: `.vscode/settings.json` / `tasks.json` / `launch.json` と `*.code-workspace` を、コメント・並び・他のキーを保ったまま書き換える / すでに新しい名前の部分と `c42check_x` のような別の語は変えない / `.gitignore` の旧い行を新しい名前にする (新しい行があれば旧い行を消すだけ) / 作業ディレクトリは**移動**して `state/` を引き継ぐ (新しい方もあれば旧い方を残す) / エディタに未保存の変更があるファイルは飛ばす / 2 回目は何も見つからない / 承認しなければ何も変えない。
+**未確認**: 実際の VS Code での確認ダイアログ (modal) と起動時の案内の表示 (stub のため)。ユーザー設定 (全体の settings.json) とワークスペースの外の設定は、書き換えない。

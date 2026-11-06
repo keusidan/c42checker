@@ -30,7 +30,7 @@ test('launch 構成: lldb / launch、F5 の既定は事前チェックあり、�
   assert.equal(skip.preLaunchTask, BUILD_DEBUG_LABEL);
   assert.match(String(skip.name), /skip checks/);
   assert.notEqual(pre.name, skip.name, '名前で明確に区別する');
-  assert.match(String(pre.program), /\.42check\/debug\/prog$/);
+  assert.match(String(pre.program), /\.c42checker\/debug\/prog$/);
 });
 
 test('tasks: c42checker type の 2 つ。label は launch の preLaunchTask と一致する', () => {

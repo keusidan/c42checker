@@ -8,7 +8,7 @@ import type { Context, StepOutcome } from './types';
 /**
  * 段階 0: 準備。
  *  1. rclone マウント上のワークスペースを警告 / 2. 空き容量の確認 (不足なら中断)
- *  3. .42check/ の作り直し / 4. ツールと対象の確認 / 5. compile_commands.json と .clangd の生成
+ *  3. .c42checker/ の作り直し / 4. ツールと対象の確認 / 5. compile_commands.json と .clangd の生成
  * compile_commands.json の生成失敗は clangd 用の補助なので警告に留め、検査自体は止めない。
  */
 export async function prepare(ctx: Context): Promise<StepOutcome> {
@@ -40,9 +40,9 @@ export async function prepare(ctx: Context): Promise<StepOutcome> {
 
   try {
     resetWorkDir(ctx.workDir, [STATE_DIR]); // 生成済みの記録 (state/) は残す
-    if (ensureGitignore(ctx.root)) say('.gitignore に .42check/ を追記しました');
+    if (ensureGitignore(ctx.root)) say('.gitignore に .c42checker/ を追記しました');
   } catch (e) {
-    return { status: 'fail', diags: [], log: log + `.42check/ を準備できませんでした: ${String(e)}\n`, reason: '.42check/ を準備できません' };
+    return { status: 'fail', diags: [], log: log + `.c42checker/ を準備できませんでした: ${String(e)}\n`, reason: '.c42checker/ を準備できません' };
   }
 
   if (ctx.sources.length === 0) {

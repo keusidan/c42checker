@@ -80,6 +80,11 @@
         "icon": "$(file-code)"
       },
       {
+        "command": "c42checker.migrateFromOldName",
+        "title": "旧名称 (c42check / .42check) の設定・作業ディレクトリを書き換える",
+        "category": "c42checker"
+      },
+      {
         "command": "c42checker.cancel",
         "title": "実行を中止",
         "category": "c42checker",
@@ -108,7 +113,7 @@
       },
       {
         "command": "c42checker.cleanWorkDir",
-        "title": ".42check/ を削除",
+        "title": ".c42checker/ を削除",
         "category": "c42checker"
       },
       {
@@ -291,7 +296,7 @@
           "type": "number",
           "default": 100,
           "minimum": 1,
-          "description": ".42check/ の上限サイズ (MB)。超えると警告して中断します。"
+          "description": ".c42checker/ の上限サイズ (MB)。超えると警告して中断します。"
         },
         "c42checker.runTimeoutSec": {
           "type": "number",
@@ -635,7 +640,7 @@
         "c42checker.normExtra.removeUnusedIncludes": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "`true` にすると、Norm の (*) 規則の検査 (`normExtra`) の中で、**コンパイラで未使用と確かめた `#include` を、ファイルから削除**します (**ソースを書き換えます**)。既定は OFF。\n\n- 削除するのは、「その行を外しても `clang -fsyntax-only` の診断が増えない」と確かめたものだけです。提供する名前が重なる include (review)、コメントで理由を書いた include、名前の表による判定 (clang が無いときなど) のものは削除しません。\n- 削除の跡に空行が連続しないよう詰めます。\n- 削除した後にプロジェクト全体の構文チェックをやり直し、削除前は通っていたのに通らなくなったら、**全て元に戻します**。\n- エディタに未保存の変更があるファイルは、書き換えません。\n- 変更前の内容は `.42check/include-backup/` に退避されます。\n- `normExtra.disable` に `unused-include` を入れると、この削除もしません。"
+          "markdownDescription": "`true` にすると、Norm の (*) 規則の検査 (`normExtra`) の中で、**コンパイラで未使用と確かめた `#include` を、ファイルから削除**します (**ソースを書き換えます**)。既定は OFF。\n\n- 削除するのは、「その行を外しても `clang -fsyntax-only` の診断が増えない」と確かめたものだけです。提供する名前が重なる include (review)、コメントで理由を書いた include、名前の表による判定 (clang が無いときなど) のものは削除しません。\n- 削除の跡に空行が連続しないよう詰めます。\n- 削除した後にプロジェクト全体の構文チェックをやり直し、削除前は通っていたのに通らなくなったら、**全て元に戻します**。\n- エディタに未保存の変更があるファイルは、書き換えません。\n- 変更前の内容は `.c42checker/include-backup/` に退避されます。\n- `normExtra.disable` に `unused-include` を入れると、この削除もしません。"
         },
         "c42checker.normExtra.detectDuplicateIncludes": {
           "type": "boolean",

@@ -17,10 +17,10 @@ F5 で CodeLLDB のデバッガを起動でき、**事前チェックに落ち�
 
 | 段階 | 内容 |
 |---|---|
-| 0 準備 | 空き容量の確認 → `.42check/` の作り直し → ツール検出 → `compile_commands.json` / `.clangd` の生成 (**初回と、必要なときだけ**。実行のたびには書き直しません) |
+| 0 準備 | 空き容量の確認 → `.c42checker/` の作り直し → ツール検出 → `compile_commands.json` / `.clangd` の生成 (**初回と、必要なときだけ**。実行のたびには書き直しません) |
 | 1 事前チェック (静的) | (任意) c_formatter_42 による整形 → norminette / **Norm の (*) 規則** / **Makefile (Norm III.11)** / 警告強化ビルド (`-Wall -Wextra -Werror -Wshadow -Wconversion`) / clang-tidy (`clang-analyzer-*,bugprone-*`) / scan-build / `gcc -fanalyzer` |
 | 2 動的チェック | ASan(AddressSanitizer) + UBSan(UndefinedBehaviorSanitizer) / TSan(ThreadSanitizer) / MSan(MemorySanitizer) / valgrind を、**項目ごとに別ビルド**で実行。任意で CBMC / Frama-C Eva (ネイティブにある場合のみ) |
-| 3 デバッガ | F5 経由のときのみ。デバッグ用ビルド (`.42check/debug/prog`) の後、CodeLLDB が起動 |
+| 3 デバッガ | F5 経由のときのみ。デバッグ用ビルド (`.c42checker/debug/prog`) の後、CodeLLDB が起動 |
 
 - 同じ段階の中は全項目を実行して結果をまとめます (`c42checker.failFast: "stage"`、既定)。`"step"` にすると最初の失敗で止まります。
 - 止まった場所 (どの段階のどの項目か) は、通知と Output Channel (`c42checker`) に出ます。
@@ -99,7 +99,7 @@ OFF のままなら、ヘッダとソースの両方に書いてあっても、�
 - include を全部消した跡に、空行が連続しないよう詰めます (Norm: 連続する空行は禁止)。
 - 削除の前後で、プロジェクト全体の構文チェックをやり直します。**削除前は通っていたのに通らなくなったら、全て元に戻します** (その場合、未使用の include は error のまま残ります)。
 - エディタに未保存の変更があるファイルは、書き換えません (error のまま残ります)。保存してから、もう一度実行してください。
-- 変更前の内容は `.42check/include-backup/` に退避されます (次の実行で消えます)。Git で管理していれば、`git diff` / `git checkout` でも戻せます。
+- 変更前の内容は `.c42checker/include-backup/` に退避されます (次の実行で消えます)。Git で管理していれば、`git diff` / `git checkout` でも戻せます。
 - 削除は、ディスク上のファイルを書き換えるだけです。42 ヘッダの `Updated:` は、エディタで保存したときのようには更新されません。
 - `c42checker.normExtra.disable` に `unused-include` を入れていれば、削除もしません。
 
@@ -201,19 +201,19 @@ norminette の前に `.c` / `.h` を整形します (整形後のファイルを
 - **ソースをその場で書き換えます。そのため既定は OFF です。** `mainFile` (テスト用の main) は対象外です。
 - 入れ方: `pipx install c-formatter-42` (または `pip install --user c-formatter-42`)。clang-format は c_formatter_42 に同梱なので、別に要りません。
   未導入なら、失敗ではなく skip + 対処案になります。動作確認は c_formatter_42 0.2.8 で行いました。
-- 変更前の内容は `.42check/format-backup/` に退避します (次の実行で消えます。git で管理していれば `git diff` / `git checkout` でも戻せます)。
+- 変更前の内容は `.c42checker/format-backup/` に退避します (次の実行で消えます。git で管理していれば `git diff` / `git checkout` でも戻せます)。
 - エディタに**未保存の変更があるファイル**があれば、何も書き換えずに skip します。
 - **整形でコードが壊れたら、変更したファイルをすべて元に戻して fail にします。** 整形の前にコンパイル (構文チェック) が通っていたのに、整形の後に通らなくなったときが対象です。
   実際に、次の 2 つで壊れることを確認しています。
   - **80 桁を超える文字列リテラル**: 1 回目の整形がリテラルの途中で改行してしまい、2 回目でさらに崩れます (`%zu` が `% zu` になる)。リテラルを `"..." "..."` のように手で分割してから使ってください。
   - **`#include` の順序に依存したコード**: c_formatter_42 は `#include` を並び替えます (`"..."` を `<...>` より前に)。ヘッダが自分で必要な `#include` を持たない場合、並び替えでコンパイルできなくなります。
-- ワークスペース直下の `.clang-format` には触れません (c_formatter_42 は cwd の `.clang-format` を一時的に差し替えるため、`.42check/` 内の空のディレクトリで実行します)。
+- ワークスペース直下の `.clang-format` には触れません (c_formatter_42 は cwd の `.clang-format` を一時的に差し替えるため、`.c42checker/` 内の空のディレクトリで実行します)。
 - 「ヘッダにプロトタイプを反映」が書いたブロックとは干渉しません (同期 → 整形 → 同期で、ブロックは変わらないことを確認済み)。
 
 ### sanitizer の選択 (ASan+UBSan / TSan / MSan)
 
 sanitizer は互いに併用できないため、View の段階 2 に**別々のチェックボックス**として並んでいます (既定は ASan+UBSan が ON、TSan と MSan は OFF)。
-複数にチェックすると、**複数回に分けて**、項目ごとに別ビルド (`.42check/asan/`、`tsan/`、`msan/`) で順番に実行され、結果も項目ごとに出ます。
+複数にチェックすると、**複数回に分けて**、項目ごとに別ビルド (`.c42checker/asan/`、`tsan/`、`msan/`) で順番に実行され、結果も項目ごとに出ます。
 
 - TSan はスレッドを使う課題 (philosophers など) で意味があります。MSan は clang 専用です。
 - MSan は、プログラムが使うコードのすべてが instrument されている必要があり、そうでないと誤検出することがあります (libc は主な関数を interceptor が補います)。
@@ -267,7 +267,7 @@ code --install-extension llvm-vs-code-extensions.vscode-clangd
   **校舎の home の空きは実測で約 1.1GB** (4.7GB 中 3.6GB 使用) でした。CodeLLDB (165MB) と clangd (拡張 1.5MB + バイナリ 225MB) を入れた状態で、さらに Node + `node_modules` で約 350MB 増えるため、余裕は小さくなります。
   内訳と合計は [docs/size-report.md](docs/size-report.md) を参照してください。
 - ビルドした後は `rm -rf node_modules` で 144MB を解放できます。
-- **rclone でマウントした Drive 上に、ソース / `node_modules` / `.42check/` を置かないでください。**
+- **rclone でマウントした Drive 上に、ソース / `node_modules` / `.c42checker/` を置かないでください。**
   小さなファイルが大量にあると極端に遅くなり、VFS キャッシュは home 側に溜まり、ログアウトでマウントも消えます。
   ソースは Git で管理し、Drive は `.vsix` の受け渡しとバックアップに限ります。実行時に、ワークスペースが rclone のマウント上にあれば警告します。
 - clangd のバイナリが PATH に無いと、clangd 拡張がダウンロードします。実機では `.vsix` のインストールの約 1 分後にダウンロードされ、
@@ -345,7 +345,7 @@ code --install-extension llvm-vs-code-extensions.vscode-clangd
    - 続けて、`debug.onTaskErrors` を `abort` にする提案が出ます。承認した場合だけ、このワークスペースの設定に書き込みます (勝手には書き換えません)
 2. F5。既定の構成は **「Debug (c42checker: 事前チェック → LLDB)」**: 段階 0〜2 → デバッグ用ビルド → CodeLLDB の順。事前チェックに落ちると、デバッガは起動しません
 3. 事前チェックを飛ばしたいときは、構成を **「Debug (skip checks) ※事前チェックを飛ばす」** に切り替える (デバッグ用ビルドだけ行う)
-4. デバッグ用ビルドは `-g -O0 -fno-omit-frame-pointer` で `.42check/debug/prog` に出力します。ASan + UBSan 付きにするには `c42checker.debug.sanitizer: true`
+4. デバッグ用ビルドは `-g -O0 -fno-omit-frame-pointer` で `.c42checker/debug/prog` に出力します。ASan + UBSan 付きにするには `c42checker.debug.sanitizer: true`
 5. 引数は `c42checker.runArgs` で変更できます。`cwd` と `terminal` は `c42checker.debug.cwd` / `c42checker.debug.terminal` (生成時に反映、既定は `${workspaceFolder}` と `integrated`)
 
 ### main を持たない課題 (libft など)
@@ -363,10 +363,10 @@ code --install-extension llvm-vs-code-extensions.vscode-clangd
 - 言語サーバは既存の clangd 拡張を使います。この拡張は、段階 0 でワークスペースのルートに `compile_commands.json` と `.clangd` を生成するだけです。
   `bear` / `compiledb` は不要です。
 - **生成は、初回と、必要なときだけです (実行のたびには書き直しません)。** clangd は、`compile_commands.json` が書き換わるたびに読み直して再解析するので、内容が同じなのに毎回書き直すと、無駄に待たされるためです。
-  - `compile_commands.json`: 無ければ作ります。c42checker が作ったもの (`.42check/state/compdb.json` に記録があります) は、**中身が変わりうる入力が変わったときだけ**作り直します。入力は、対象の `.c` の一覧・include path・`mainFile`・clang の有無・設定 (`compdb.*` / `compile.cflags` / `includePaths` / `targetDir`)・Makefile の内容です。`.c` の中身の編集や、既存のディレクトリへのヘッダの追加では、作り直しません。
+  - `compile_commands.json`: 無ければ作ります。c42checker が作ったもの (`.c42checker/state/compdb.json` に記録があります) は、**中身が変わりうる入力が変わったときだけ**作り直します。入力は、対象の `.c` の一覧・include path・`mainFile`・clang の有無・設定 (`compdb.*` / `compile.cflags` / `includePaths` / `targetDir`)・Makefile の内容です。`.c` の中身の編集や、既存のディレクトリへのヘッダの追加では、作り直しません。
   - **記録がないのに既にある** `compile_commands.json` (自分で用意したものや、記録を入れる前の版が作ったもの) は、**上書きしません**。c42checker で作り直すには、コマンド「c42checker: compile_commands.json を再生成」を実行してください (必ず書き直します。以降は c42checker が作ったものとして、必要なときだけ更新します)。
   - `.clangd`: **無いときだけ**作ります。既にあれば、c42checker 製のもの (`# generated by c42checker` で始まる) も、自作のものも、書き直しません。作り直したいときは、ファイルを消してから再生成コマンドを実行してください。
-  - 記録 (`.42check/state/`) は、実行のたびの `.42check/` の作り直しや、「c42checker: .42check/ を削除」コマンドでも消えません。手で `.42check/` を丸ごと消すと、記録も消え、既にある `compile_commands.json` は「自分で用意したもの」として扱われます (再生成コマンドで直せます)。
+  - 記録 (`.c42checker/state/`) は、実行のたびの `.c42checker/` の作り直しや、「c42checker: .c42checker/ を削除」コマンドでも消えません。手で `.c42checker/` を丸ごと消すと、記録も消え、既にある `compile_commands.json` は「自分で用意したもの」として扱われます (再生成コマンドで直せます)。
 - 生成方式 (`c42checker.compdb.source`): `auto` (既定: Makefile があれば `make -n -B` を解析、取れなければ `files`) / `files` (ソース一覧から直接) / `make-n` / `clang-MJ` (`clang -MJ` の断片を結合)。
   `make -n` は Makefile を評価します (`$(shell ...)` は実行されます)。
 - **clangd 内蔵の clang-tidy は、編集中の参考表示です。段階 1 の合否判定は、c42checker が直接実行する clang-tidy (校舎では `clang-tidy-12`) の結果を正とします。**
@@ -384,7 +384,7 @@ code --install-extension llvm-vs-code-extensions.vscode-clangd
 | `c42checker.ignoreMakefile` | `false` | Makefile があっても使わず、`compile.*` の引数と `.c` の一覧でビルドして検証する (scan-build / compile_commands.json。Makefile の検査 (III.11) は skip) |
 | `c42checker.failFast` | `"stage"` | `"stage"`: 段階内は全項目を実行 / `"step"`: 最初の失敗で止める |
 | `c42checker.minFreeSpaceMB` | `200` | 空き容量の下限 (MB)。下回ると警告して中断 |
-| `c42checker.workDirMaxMB` | `100` | `.42check/` の上限 (MB)。超えると警告して中断 |
+| `c42checker.workDirMaxMB` | `100` | `.c42checker/` の上限 (MB)。超えると警告して中断 |
 | `c42checker.runTimeoutSec` | `10` | 動的チェックの実行の制限時間 (秒。valgrind は 5 倍)。超過は skip |
 | `c42checker.staticTimeoutSec` | `120` | 静的チェック各ツールの制限時間 (秒) |
 | `c42checker.norminette.ignoreParameterErrors` | `false` | norminette の、関数の引数についての指摘 (`TOO_MANY_ARGS` など) を結果から除く |
@@ -402,21 +402,32 @@ code --install-extension llvm-vs-code-extensions.vscode-clangd
 | `c42checker.debug.cwd` / `.terminal` | `${workspaceFolder}` / `integrated` | launch 構成に反映 |
 | `c42checker.checks` | (全項目。TSan / MSan / CBMC / Frama-C のみ `false`) | チェックボックスの状態 (View から変更すると保存される) |
 
-`.42check/` は実行のたびに削除して作り直し、`.gitignore` に自動で追記します。
+`.c42checker/` は実行のたびに削除して作り直し、`.gitignore` に自動で追記します。
 
 ## 旧名称 (`c42check`) からの移行
 
-名称を、リポジトリ名に合わせて **c42checker** にしました。設定キー・コマンド ID・View・task の種類の接頭辞が、`c42check.*` から `c42checker.*` に変わっています。
-旧名称のままでは動きません。次を書き換えてください。
+名称を、リポジトリ名に合わせて **c42checker** にしました。次の名前が変わっています。
 
-| 場所 | 旧 | 新 |
+| 対象 | 旧 | 新 |
 |---|---|---|
-| `.vscode/settings.json` の設定キー | `"c42check.targetDir"` など | `"c42checker.targetDir"` など |
-| `.vscode/tasks.json` の task の種類・label | `"type": "c42check"`、`c42check: pre-debug` | `"type": "c42checker"`、`c42checker: pre-debug` |
-| `.vscode/launch.json` | `preLaunchTask: "c42check: pre-debug"`、`${command:c42check.runArgs}` | `"c42checker: pre-debug"`、`${command:c42checker.runArgs}` |
+| 設定キー | `c42check.targetDir` など | `c42checker.targetDir` など |
+| コマンド ID・View | `c42check.run`、`c42check.view` など | `c42checker.run`、`c42checker.view` など |
+| task の種類・label | `"type": "c42check"`、`c42check: pre-debug` | `"type": "c42checker"`、`c42checker: pre-debug` |
+| launch.json | `"preLaunchTask": "c42check: pre-debug"`、`${command:c42check.runArgs}` | `"c42checker: pre-debug"`、`${command:c42checker.runArgs}` |
+| 作業ディレクトリ | `.42check/` | `.c42checker/` |
 
-生成済みの launch.json / tasks.json は、コマンド「c42checker: launch.json / tasks.json を生成・更新」では**既存の項目を変更しない**ため、手で書き換えるか、旧い項目を消してから生成し直してください。
-作業用ディレクトリ `.42check/` の名前は変えていません (`.gitignore` の記述もそのままです)。
+旧名称のままでは動きません。**書き換えは、拡張機能のコマンドで自動でできます。**
+
+- コマンドパレットの「c42checker: 旧名称 (c42check / .42check) の設定・作業ディレクトリを書き換える」
+- 旧名称のものが見つかると、起動時にも案内が出ます (「今後は表示しない」で止められます)。
+
+書き換える内容を示して、承認を取ってから行います。
+- `.vscode/settings.json` / `tasks.json` / `launch.json` と、ルートの `*.code-workspace` の `c42check` と `.42check` を、新しい名前にします (コメントや並びはそのままです。`c42checker` など、すでに新しい名前の部分は変えません)。
+- `.gitignore` の `.42check/` の行を `.c42checker/` にします。
+- 作業ディレクトリ `.42check/` を `.c42checker/` に**移動**します (消しません。`state/` の「生成済みの記録」を引き継ぐため)。新しい方も既にあるときは、旧い方をそのまま残します。
+- エディタに未保存の変更があるファイルは、上書きせずに飛ばします。保存してからもう一度実行してください。結果は Output「c42checker: 移行」に出ます。
+
+**自動では書き換えないもの**: ユーザー設定 (全体の settings.json) の `c42check.*`、ワークスペースの外にある設定ファイル。必要なら自分で書き換えてください。
 
 ## 動作確認用のサンプル
 
@@ -443,7 +454,7 @@ Node.js 22 以上が必要です (`.nvmrc`、`package.json` の `engines`)。
 npm ci
 npm run typecheck   # tsc --noEmit
 npm run build       # esbuild で dist/extension.js に bundle
-npm test            # 251 件。実際のツール (norminette / clang / valgrind など) があれば使い、無ければ該当項目は skip
+npm test            # 260 件。実際のツール (norminette / clang / valgrind など) があれば使い、無ければ該当項目は skip
 npm run package     # .vsix を作る
 ```
 
@@ -453,7 +464,7 @@ npm run package     # .vsix を作る
 ## 既知の制限
 
 - scan-build は、Makefile が `CC` を固定していても `make CC="$CC"` で上書きして ccc-analyzer を通しますが、レシピがコンパイラを直接 (`gcc` と) 書いている場合は解析されません。
-  元のツリーを汚さないよう、`.42check/scan-build/src` にコピーして `make -B` で全ビルドします。
+  元のツリーを汚さないよう、`.c42checker/scan-build/src` にコピーして `make -B` で全ビルドします。
 - GUI や無限ループの課題 (so_long、cub3d など) は、制限時間を超えるため動的チェックが skip になります。その項目のチェックを外してください。
 - ツールの版が違うと検出結果が変わりえます。開発時の確認は clang 18 / gcc 13 / valgrind 3.22 で行っており、校舎の `-12` 系での確認は未実施です。
 - `gcc -fanalyzer` (校舎の gcc-12 で確認) は、`samples/bug-leak` のメモリリークを見逃しました。同じリークを clang-tidy と scan-build、ASan、valgrind は検出しています。

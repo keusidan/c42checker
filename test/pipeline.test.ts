@@ -71,7 +71,7 @@ test('段階 0 が失敗 (空き容量不足) なら、何も実行しない', a
   cleanup();
 });
 
-test('.42check/ が上限を超えたら中断する', async () => {
+test('.c42checker/ が上限を超えたら中断する', async () => {
   const { ctx, cleanup } = sampleContext('ok', { workDirMaxMB: 1 });
   const ran: string[] = [];
   const steps = fakes({}, ran);

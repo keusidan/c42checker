@@ -102,7 +102,7 @@ const cFormatter: StepDef = {
   id: 'cFormatter',
   label: 'c_formatter_42 (整形)',
   stage: 1,
-  note: 'norminette の前に、.c / .h を **その場で書き換えて** 整形します (`#include` の並び替えも行います)。変更前の内容は .42check/format-backup/ に退避されます。',
+  note: 'norminette の前に、.c / .h を **その場で書き換えて** 整形します (`#include` の並び替えも行います)。変更前の内容は .c42checker/format-backup/ に退避されます。',
   prerequisite: (ctx) =>
     first(
       needTool(ctx, 'cFormatter', 'c_formatter_42'),
@@ -179,7 +179,7 @@ const cFormatter: StepDef = {
       }
     }
     log += changed.length
-      ? `整形で変更したファイル ${changed.length} 件 (変更前は .42check/format-backup/ に退避):\n${list(changed)}\n`
+      ? `整形で変更したファイル ${changed.length} 件 (変更前は .c42checker/format-backup/ に退避):\n${list(changed)}\n`
       : '整形による変更はありません\n';
     if (!(baseline.checked && baseline.ok)) log += '(clang が無い、または整形前から構文エラーがあるため、整形後の構文チェックは行っていません)\n';
     return {
@@ -276,7 +276,7 @@ async function removeUnusedIncludes(ctx: Context, findings: readonly Finding[]):
     };
   }
   const list = fix.removed.map((f) => `  ${path.relative(ctx.root, f.file)}:${f.line} ${/#include \S+/.exec(f.message)?.[0] ?? '#include'}`).join('\n');
-  log += `使っていない #include を ${fix.removed.length} 個削除しました (変更前は .42check/include-backup/ に退避):\n${list}\n`;
+  log += `使っていない #include を ${fix.removed.length} 個削除しました (変更前は .c42checker/include-backup/ に退避):\n${list}\n`;
   const remaining = [...keep, ...fix.dirty].map((f) => {
     const removedLines = fix.changed.get(f.file);
     return removedLines ? { ...f, line: shiftLine(f.line, removedLines) } : f;
@@ -593,7 +593,7 @@ const runMs = (ctx: Context) => ctx.settings.runTimeoutSec * 1000;
 interface SanitizerSpec {
   id: StepId;
   label: string;
-  dir: string; // .42check/<dir>/prog (sanitizer 同士は併用できないので別ビルド)
+  dir: string; // .c42checker/<dir>/prog (sanitizer 同士は併用できないので別ビルド)
   flags: string[];
   env: (detectLeaks: number) => NodeJS.ProcessEnv;
   /** 実行時出力にこれが現れたら「sanitizer が報告した」とみなす */

@@ -62,13 +62,13 @@ test('norminette の前に実行され、norm 違反が減る (42 ヘッダは�
   cleanup();
 });
 
-test('整形前の内容を .42check/format-backup/ に退避する', async (t) => {
+test('整形前の内容を .c42checker/format-backup/ に退避する', async (t) => {
   const { ctx, dir, cleanup } = sampleContext('norm-ng');
   if (!ctx.tools.cFormatter) return t.skip('c_formatter_42 が無い');
   shortenLiteral(dir);
   const original = read(dir, 'main.c');
   await runPipeline(ctx, { selected: ['cFormatter'] });
-  assert.equal(read(dir, '.42check/format-backup/main.c'), original, '退避は整形前の内容');
+  assert.equal(read(dir, '.c42checker/format-backup/main.c'), original, '退避は整形前の内容');
   assert.notEqual(read(dir, 'main.c'), original);
   cleanup();
 });
@@ -79,11 +79,11 @@ test('冪等: 2 回目は変更なし、退避も作られない', async (t) => 
   shortenLiteral(dir);
   await runPipeline(ctx, { selected: ['cFormatter'] });
   const once = read(dir, 'main.c');
-  const r = await runPipeline(ctx, { selected: ['cFormatter'] }); // 段階 0 で .42check/ は作り直される
+  const r = await runPipeline(ctx, { selected: ['cFormatter'] }); // 段階 0 で .c42checker/ は作り直される
   const fmt = r.results.find((x) => x.id === 'cFormatter')!;
   assert.match(fmt.log, /整形による変更はありません/);
   assert.equal(read(dir, 'main.c'), once);
-  assert.equal(fs.existsSync(path.join(dir, '.42check', 'format-backup')), false);
+  assert.equal(fs.existsSync(path.join(dir, '.c42checker', 'format-backup')), false);
   cleanup();
 });
 
@@ -112,7 +112,7 @@ test('整形でコンパイルが通らなくなったら、変更したファ�
   assert.match(fmt.hint ?? '', /文字列リテラル/);
   assert.ok(fmt.diags.length > 0, '壊れた箇所の診断が Problems 用に取れている');
   assert.deepEqual(['main.c', 'str_utils.c', 'str_utils.h'].map((f) => read(dir, f)), snapshot, '全ファイルが 1 バイトも変わっていない');
-  assert.equal(fs.existsSync(path.join(dir, '.42check', 'format-backup')), false, '戻したので退避も残さない');
+  assert.equal(fs.existsSync(path.join(dir, '.c42checker', 'format-backup')), false, '戻したので退避も残さない');
   assert.ok(r.results.some((x) => x.id === 'norminette'), '同じ段階の norminette は実行される (failFast: stage)');
   cleanup();
 });
@@ -142,7 +142,7 @@ test('ワークスペース直下の .clang-format には触れない (c_formatt
   assert.equal(fs.lstatSync(path.join(dir, '.clang-format')).isSymbolicLink(), false, 'シンボリックリンクに差し替わっていない');
   assert.equal(read(dir, '.clang-format'), mine);
   assert.match(read(dir, 'main.c'), /^int\tmain\(/m, '整形自体は norm 用の設定で行われている (自分の LLVM 設定ではない)');
-  assert.equal(fs.existsSync(path.join(dir, '.42check', 'format-cwd')), false, '一時ディレクトリは後始末される');
+  assert.equal(fs.existsSync(path.join(dir, '.c42checker', 'format-cwd')), false, '一時ディレクトリは後始末される');
   cleanup();
 });
 

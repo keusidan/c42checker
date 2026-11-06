@@ -20,6 +20,8 @@ export const state = {
   /** showQuickPick が選ぶ項目を決める関数 (undefined ならキャンセル)。渡された項目も記録する */
   quickPick: undefined as ((items: { label: string }[]) => unknown) | undefined,
   quickPickItems: [] as { label: string; description?: string; value?: string }[],
+  /** showInformationMessage が選んだ項目 */
+  infoChoice: undefined as string | undefined,
   /** showWarningMessage が選んだ項目 */
   warnChoice: undefined as string | undefined,
 };
@@ -75,7 +77,10 @@ export const window = {
     state.messages.push(m);
     return state.warnChoice;
   },
-  showInformationMessage: ok,
+  showInformationMessage: async (m: string) => {
+    state.messages.push(m);
+    return state.infoChoice;
+  },
   setStatusBarMessage: (m: string) => {
     state.statusBar.push(m);
     return { dispose: () => undefined };

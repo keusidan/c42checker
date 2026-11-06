@@ -17,7 +17,7 @@ const prepareLog = async (ctx: Context) => (await runPipeline(ctx, { selected: [
 const stat = (dir: string, f: string) => fs.statSync(path.join(dir, f), { bigint: true }).mtimeNs;
 const read = (dir: string, f: string) => fs.readFileSync(path.join(dir, f), 'utf8');
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const STATE = path.join('.42check', STATE_DIR, 'compdb.json');
+const STATE = path.join('.c42checker', STATE_DIR, 'compdb.json');
 
 test('初回は compile_commands.json / .clangd / 生成の記録を作る。2 回目以降は、中身も更新時刻も変えない', async () => {
   const { ctx, dir, cleanup } = sampleContext('ok');
@@ -39,16 +39,16 @@ test('初回は compile_commands.json / .clangd / 生成の記録を作る。2 �
   cleanup();
 });
 
-test('記録 (.42check/state/) は、実行のたびの .42check/ の作り直しで消えない。他の成果物は消える', async () => {
+test('記録 (.c42checker/state/) は、実行のたびの .c42checker/ の作り直しで消えない。他の成果物は消える', async () => {
   const { ctx, dir, cleanup } = sampleContext('ok');
   await prepareLog(ctx);
-  fs.mkdirSync(path.join(dir, '.42check', 'asan'), { recursive: true });
-  fs.writeFileSync(path.join(dir, '.42check', 'asan', 'prog'), 'x');
+  fs.mkdirSync(path.join(dir, '.c42checker', 'asan'), { recursive: true });
+  fs.writeFileSync(path.join(dir, '.c42checker', 'asan', 'prog'), 'x');
   await prepareLog(ctx);
   assert.ok(fs.existsSync(path.join(dir, STATE)));
-  assert.ok(!fs.existsSync(path.join(dir, '.42check', 'asan')));
+  assert.ok(!fs.existsSync(path.join(dir, '.c42checker', 'asan')));
   resetWorkDir(ctx.workDir, [STATE_DIR]);
-  assert.ok(fs.existsSync(path.join(dir, STATE)), '「.42check/ を削除」コマンドでも、記録は残る');
+  assert.ok(fs.existsSync(path.join(dir, STATE)), '「.c42checker/ を削除」コマンドでも、記録は残る');
   cleanup();
 });
 

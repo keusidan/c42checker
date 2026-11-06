@@ -13,7 +13,7 @@ const stepOf = (r: Awaited<ReturnType<typeof runPipeline>>) => r.results.find((x
 const needMake = (ctx: Context) => ctx.tools.make !== undefined && ctx.tools.cc !== undefined;
 const readMk = (dir: string) => fs.readFileSync(path.join(dir, 'Makefile'), 'utf8');
 const writeMk = (dir: string, s: string) => fs.writeFileSync(path.join(dir, 'Makefile'), s);
-const GENERATED = new Set(['.42check', '.clangd', 'compile_commands.json']); // 段階 0 が作るもの
+const GENERATED = new Set(['.c42checker', '.clangd', 'compile_commands.json']); // 段階 0 が作るもの
 const tree = (dir: string) => fs.readdirSync(dir).filter((n) => !GENERATED.has(n)).sort();
 
 /* ───────────── 静的な検査 ───────────── */
@@ -87,7 +87,7 @@ test('step: 正しい Makefile (samples/ok) は pass。元のファイルは変�
   const s = stepOf(r);
   assert.equal(s.status, 'pass', s.log);
   assert.deepEqual(tree(dir), before, 'プロジェクト直下にビルド成果物が増えていない');
-  assert.ok(!fs.existsSync(path.join(dir, '.42check', 'makefile-check')), '作業用のコピーは消す');
+  assert.ok(!fs.existsSync(path.join(dir, '.c42checker', 'makefile-check')), '作業用のコピーは消す');
   assert.match(s.log, /\$ make {2}\(終了コード 0\)/);
   assert.match(s.log, /Nothing to be done/);
   assert.match(s.log, /機械では判定できない項目/);

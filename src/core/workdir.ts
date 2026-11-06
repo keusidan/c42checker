@@ -1,9 +1,9 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-export const WORK_DIR_NAME = '.42check';
+export const WORK_DIR_NAME = '.c42checker';
 
-/** .42check/ を丸ごと消して作り直す。実行のたびに古い成果物を残さないため。 */
+/** .c42checker/ を丸ごと消して作り直す。実行のたびに古い成果物を残さないため。 */
 export function resetWorkDir(workDir: string, keep: string[] = []): void {
   if (path.basename(workDir) !== WORK_DIR_NAME) {
     throw new Error(`安全のため ${WORK_DIR_NAME} 以外は削除しません: ${workDir}`);
@@ -75,7 +75,7 @@ export function isOnRcloneMount(dir: string, mountsText?: string): boolean {
   return !!best && /rclone/i.test(`${best.fstype} ${best.src}`);
 }
 
-/** .gitignore に .42check/ が無ければ追記する。追記したら true。 */
+/** .gitignore に .c42checker/ が無ければ追記する。追記したら true。 */
 export function ensureGitignore(root: string): boolean {
   const file = path.join(root, '.gitignore');
   let text = '';
@@ -84,7 +84,7 @@ export function ensureGitignore(root: string): boolean {
   } catch {
     /* 無ければ新規作成 */
   }
-  if (text.split('\n').some((l) => /^\/?\.42check\/?$/.test(l.trim()))) return false;
+  if (text.split('\n').some((l) => /^\/?\.c42checker\/?$/.test(l.trim()))) return false;
   const sep = text === '' || text.endsWith('\n') ? '' : '\n';
   fs.writeFileSync(file, `${text}${sep}${WORK_DIR_NAME}/\n`);
   return true;
@@ -92,7 +92,7 @@ export function ensureGitignore(root: string): boolean {
 
 /**
  * scan-build 用に、ビルド成果物を除いたプロジェクトのコピーを作る。
- * fs.cpSync は「コピー先がコピー元の配下」だと拒否するため (.42check は root 配下)、自前で再帰する。
+ * fs.cpSync は「コピー先がコピー元の配下」だと拒否するため (.c42checker は root 配下)、自前で再帰する。
  */
 export function copyProject(srcRoot: string, dest: string, maxBytes: number): void {
   const skip = new Set(['.git', WORK_DIR_NAME, 'node_modules', '.vscode']);

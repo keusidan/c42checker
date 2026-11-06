@@ -57,7 +57,7 @@ for (const [id, sample] of [['tsan', 'bug-tsan'], ['msan', 'bug-msan']] as const
     assert.ok(x.diags.length > 0, '位置つきの診断が付く');
     const called = fs.readFileSync(fake.called, 'utf8').trim().split('\n');
     assert.equal(called.length, 1);
-    assert.equal(called[0], `${machineArch().join(' ')} -R ${path.join(dir, '.42check', id, 'prog')}`.trim());
+    assert.equal(called[0], `${machineArch().join(' ')} -R ${path.join(dir, '.c42checker', id, 'prog')}`.trim());
     assert.match(log(r, id), new RegExp(`\\$ ${fake.bin.replace(/[/.]/g, '\\$&')} ${machineArch()[0] ?? ''} -R `));
     fs.rmSync(fake.dir, { recursive: true });
     cleanup();

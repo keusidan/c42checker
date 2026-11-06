@@ -1,7 +1,7 @@
 /**
  * 使っていない #include の削除 (設定 c42checker.normExtra.removeUnusedIncludes)。
  * 削除するのは、コンパイラで「外しても診断が増えない」と確かめた include (includecheck.ts の error) だけ。
- * 元の内容は .42check/include-backup/ に退避する。
+ * 元の内容は .c42checker/include-backup/ に退避する。
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -44,7 +44,7 @@ export interface RemovalResult {
   dirty: Finding[];
   /** 変更したファイル → 削除した元の行番号 */
   changed: Map<string, Set<number>>;
-  /** 変更したファイルを元に戻す (.42check/include-backup/ も消す) */
+  /** 変更したファイルを元に戻す (.c42checker/include-backup/ も消す) */
   restore(): void;
 }
 

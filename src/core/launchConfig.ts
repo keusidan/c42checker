@@ -2,7 +2,7 @@ import { parseJsonc } from './jsonc';
 
 export const PRE_DEBUG_LABEL = 'c42checker: pre-debug';
 export const BUILD_DEBUG_LABEL = 'c42checker: build-debug';
-export const DEBUG_PROGRAM = '${workspaceFolder}/.42check/debug/prog';
+export const DEBUG_PROGRAM = '${workspaceFolder}/.c42checker/debug/prog';
 
 export interface LaunchOptions {
   cwd: string;

@@ -1,14 +1,14 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-const SKIP_DIRS = new Set(['.git', '.42check', 'node_modules', '.vscode', '.cache', 'out', 'dist']);
+const SKIP_DIRS = new Set(['.git', '.c42checker', 'node_modules', '.vscode', '.cache', 'out', 'dist']);
 
 export interface SourceScan {
   sources: string[];
   headers: string[];
 }
 
-/** targetRoot 以下の .c / .h を再帰的に集める (隠しディレクトリと .42check は除外)。 */
+/** targetRoot 以下の .c / .h を再帰的に集める (隠しディレクトリと .c42checker は除外)。 */
 export function scanSources(targetRoot: string): SourceScan {
   const sources: string[] = [];
   const headers: string[] = [];

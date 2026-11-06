@@ -4,6 +4,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { test } from 'node:test';
 import * as vscode from 'vscode';
+import { migrateFromOldName, suggestMigration } from '../src/extension';
 import { Problems } from '../src/ui/diagnostics';
 import { Outputs } from '../src/ui/output';
 import { Runner } from '../src/ui/runner';
@@ -11,7 +12,7 @@ import { CheckTaskProvider } from '../src/ui/taskProvider';
 import { sampleContext } from './helpers';
 
 // stub 側にだけある state (型定義は @types/vscode のため any 経由で触る)
-const state = (vscode as unknown as { state: { folders: unknown[]; config: Record<string, unknown>; messages: string[] } }).state;
+const state = (vscode as unknown as { state: { folders: unknown[]; config: Record<string, unknown>; messages: string[]; warnChoice?: string; dirty: Set<string> } }).state;
 
 function setup(sample: string, remove: string[] = []) {
   const { dir, cleanup } = sampleContext(sample, {}, remove);
@@ -36,11 +37,11 @@ async function runTask(runner: Runner, mode: string): Promise<{ code: number | v
   return { code: await closed, output };
 }
 
-test('pre-debug (正常): 終了コード 0、デバッグ用バイナリが .42check/debug/prog にできる', async () => {
+test('pre-debug (正常): 終了コード 0、デバッグ用バイナリが .c42checker/debug/prog にできる', async () => {
   const { dir, runner, cleanup } = setup('ok');
   const { code, output } = await runTask(runner, 'pre-debug');
   assert.equal(code, 0, output);
-  assert.ok(fs.existsSync(path.join(dir, '.42check', 'debug', 'prog')));
+  assert.ok(fs.existsSync(path.join(dir, '.c42checker', 'debug', 'prog')));
   assert.match(output, /すべて通りました/);
   cleanup();
 });
@@ -49,7 +50,7 @@ test('pre-debug (norminette 違反): 終了コード非 0 → preLaunchTask と�
   const { dir, runner, outputs, cleanup } = setup('norm-ng');
   const { code, output } = await runTask(runner, 'pre-debug');
   assert.equal(code, 1, output);
-  assert.equal(fs.existsSync(path.join(dir, '.42check', 'debug', 'prog')), false);
+  assert.equal(fs.existsSync(path.join(dir, '.c42checker', 'debug', 'prog')), false);
   assert.match(output, /段階 1 の norminette で止まりました。後続の段階は実行していません/);
   assert.match(output, /実行していません \(前の失敗のため\)/);
   assert.ok(state.messages.some((m) => /段階 1 の norminette/.test(m)), '通知で止まった段階・項目を示す');
@@ -64,7 +65,7 @@ test('build-debug ("Debug (skip checks)"): norminette 違反でもビルドだ�
   const { dir, runner, cleanup } = setup('norm-ng');
   const { code, output } = await runTask(runner, 'build-debug');
   assert.equal(code, 0, output);
-  assert.ok(fs.existsSync(path.join(dir, '.42check', 'debug', 'prog')));
+  assert.ok(fs.existsSync(path.join(dir, '.c42checker', 'debug', 'prog')));
   cleanup();
 });
 
@@ -112,4 +113,78 @@ test('不明な mode の task は解決しない', () => {
   assert.equal(p.resolveTask({ definition: { type: 'c42checker', mode: 'nope' }, name: 'x' } as unknown as vscode.Task), undefined);
   assert.equal(p.provideTasks().length, 3);
   cleanup();
+});
+
+/* ───────── 旧名称からの移行コマンド ───────── */
+
+function oldNamedProject(): string {
+  const { dir } = sampleContext('ok');
+  fs.mkdirSync(path.join(dir, '.vscode'), { recursive: true });
+  fs.writeFileSync(path.join(dir, '.vscode', 'settings.json'), '{"c42check.targetDir": "."}\n');
+  state.folders = [{ uri: { fsPath: dir } }];
+  state.messages = [];
+  state.warnChoice = undefined;
+  state.dirty = new Set();
+  return dir;
+}
+const uiParts = () => {
+  const outputs = new Outputs();
+  return { outputs, runner: new Runner(outputs, new Problems(), { text: '' } as unknown as vscode.StatusBarItem) };
+};
+
+test('移行コマンド: 承認 (書き換える) すると書き換える / 承認しなければ何も変えない', async () => {
+  const dir = oldNamedProject();
+  const file = path.join(dir, '.vscode', 'settings.json');
+  const { outputs, runner } = uiParts();
+
+  state.warnChoice = undefined; // モーダルを閉じた (キャンセル)
+  await migrateFromOldName(runner, outputs);
+  assert.equal(fs.readFileSync(file, 'utf8'), '{"c42check.targetDir": "."}\n', 'キャンセルでは変えない');
+
+  state.warnChoice = '書き換える';
+  await migrateFromOldName(runner, outputs);
+  assert.equal(fs.readFileSync(file, 'utf8'), '{"c42checker.targetDir": "."}\n');
+  assert.match((outputs.get('移行') as unknown as { text: string }).text, /書き換えました: \.vscode\/settings\.json/);
+
+  state.messages = [];
+  await migrateFromOldName(runner, outputs);
+  assert.ok(state.messages.some((m) => /見つかりませんでした/.test(m)), '2 回目は「見つかりません」と伝える');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('移行コマンド: 未保存の変更があるファイルは書き換えず、そう伝える', async () => {
+  const dir = oldNamedProject();
+  const file = path.join(dir, '.vscode', 'settings.json');
+  state.dirty = new Set([file]);
+  state.warnChoice = '書き換える';
+  const { outputs, runner } = uiParts();
+  await migrateFromOldName(runner, outputs);
+  assert.equal(fs.readFileSync(file, 'utf8'), '{"c42check.targetDir": "."}\n');
+  assert.ok(state.messages.some((m) => /未保存の変更があるため/.test(m)));
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('起動時の案内: 旧名称があれば 1 度案内し、「今後は表示しない」で止まる。旧名称が無ければ何も言わない', async () => {
+  const dir = oldNamedProject();
+  const store = new Map<string, unknown>();
+  const memento = { get: (k: string) => store.get(k), update: async (k: string, v: unknown) => void store.set(k, v) } as unknown as vscode.Memento;
+  let ran = 0;
+  state.messages = [];
+  await suggestMigration(memento, async () => void ran++);
+  assert.ok(state.messages.some((m) => /旧名称 \(c42check\)/.test(m)));
+  assert.equal(ran, 0, '選ばなければ実行しない');
+
+  (vscode as unknown as { state: { infoChoice?: string } }).state.infoChoice = '今後は表示しない';
+  await suggestMigration(memento, async () => void ran++);
+  assert.equal(store.get('c42checker.migrationDeclined'), true);
+  state.messages = [];
+  await suggestMigration(memento, async () => void ran++);
+  assert.deepEqual(state.messages, [], '「今後は表示しない」の後は案内しない');
+
+  fs.writeFileSync(path.join(dir, '.vscode', 'settings.json'), '{"c42checker.targetDir": "."}\n');
+  store.clear();
+  await suggestMigration(memento, async () => void ran++);
+  assert.deepEqual(state.messages, [], '旧名称が無ければ案内しない');
+  (vscode as unknown as { state: { infoChoice?: string } }).state.infoChoice = undefined;
+  fs.rmSync(dir, { recursive: true, force: true });
 });

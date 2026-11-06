@@ -83,7 +83,7 @@ export interface Settings {
   normExtraDisable: string[];
   /** true なら、normExtra の review (疑わしいだけ) も fail にする */
   normExtraReviewAsFail: boolean;
-  /** true なら、コンパイラで未使用と確かめた #include を、ファイルから削除する (.42check/include-backup/ に退避) */
+  /** true なら、コンパイラで未使用と確かめた #include を、ファイルから削除する (.c42checker/include-backup/ に退避) */
   normExtraRemoveUnusedIncludes: boolean;
   /** true なら、include の二重指定 (同じヘッダを 2 回 / ヘッダとソースの両方で include) も検出する */
   normExtraDetectDuplicateIncludes: boolean;
@@ -182,7 +182,7 @@ export interface RunIO {
 export interface Context {
   root: string; // ワークスペースルート (絶対)
   targetRoot: string; // 検証対象ディレクトリ (絶対)
-  workDir: string; // root/.42check
+  workDir: string; // root/.c42checker
   settings: Settings;
   tools: Tools;
   sources: string[]; // 絶対パスの .c

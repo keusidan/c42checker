@@ -179,7 +179,7 @@ test('複数選択: ASan+UBSan / TSan / MSan は別ビルド・別バイナリ�
   const r = await runPipeline(ctx, { selected: ['msan', 'tsan', 'asanUbsan'] }, { onStepStart: (id) => order.push(id) });
   if (cannotRun(r, 'tsan') || cannotRun(r, 'msan')) return t.skip('この環境では TSan / MSan が使えない');
   assert.deepEqual(order.filter((x) => x !== 'prepare'), ['asanUbsan', 'tsan', 'msan'], '選択順ではなく、定義順で 1 項目ずつ');
-  for (const sub of ['asan', 'tsan', 'msan']) assert.ok(fs.existsSync(path.join(dir, '.42check', sub, 'prog')), `${sub} は別ビルド`);
+  for (const sub of ['asan', 'tsan', 'msan']) assert.ok(fs.existsSync(path.join(dir, '.c42checker', sub, 'prog')), `${sub} は別ビルド`);
   assert.equal(status(r, 'asanUbsan'), 'pass', 'ASan にはデータ競合は見えない');
   assert.equal(status(r, 'tsan'), 'fail');
   assert.equal(status(r, 'msan'), 'pass');
