@@ -327,6 +327,8 @@ code --install-extension llvm-vs-code-extensions.vscode-clangd
 - **手書きの宣言と重複させません** (`c42checker.proto.skipExisting`、既定 ON): マーカーの**外**で、すでに宣言されている関数 (ヘッダにある宣言を、これも ctags で取得します) は、ブロックに入れません。
   ブロックの中にある古い宣言は、この判定には使いません (定義が無くなった宣言は、ブロックから消えます)。OFF にすると、手書きの宣言があっても全てブロックに入れます。
   関数名の桁は、手書きの宣言の桁に揃えます (norm はヘッダ全体で桁を揃える規則 `MISALIGNED_FUNC_DECL` のため)。手書きの桁より、ブロックに必要な桁 (`unsigned long long` など) が広いときは、手書きの側は変えられないので、norminette が指摘します。
+- **他のヘッダで宣言済みの関数も、ブロックに入れません** (`c42checker.proto.skipExisting`、既定 ON): 反映先とは**別のヘッダ** (ワークスペースの全ての `.h`) が、すでに宣言している関数は、二重宣言になるので入れません。他のヘッダは書き換えません。
+  他のヘッダの `auto prototypes` のブロックの中は、手書きではないので「宣言済み」に数えません。除いた関数は、ログ (Output「プロトタイプ同期」) と、差分のタイトル (「他のヘッダで宣言済みの N 件は除外」) に出ます。他のヘッダの宣言を取得できなかったときは、この判定だけを行わず、ログに理由を残して続けます。
 - **手書きの宣言を、ソースの型に合わせます** (`c42checker.proto.updateExisting`、既定 ON): マーカーの外の手書きの宣言が、ソースの定義と**型 (戻り値の型・引数の型)** で食い違うときは、ソースの型に書き換えます。
   関数名の桁は元の宣言のまま、複数行の宣言は 1 行にまとめます。引数の**名前**だけの違いや、空白の違いは書き換えません。
   コメント・インデント・`extern` / `static` / `inline` を含む宣言と、1 行に複数の宣言がある行は、触りません。書き換えた宣言は、ログ (Output「プロトタイプ同期」) に `前 → 後` で出ます。OFF にすると、手書きの宣言は書き換えません。
@@ -397,7 +399,7 @@ code --install-extension llvm-vs-code-extensions.vscode-clangd
 | `c42checker.proto.sourceDir` | `""` | 関数定義を抽出する `.c` のディレクトリ (空なら `targetDir`) |
 | `c42checker.proto.syncOnRun` | `false` | 実行時 (段階 0) にプロトタイプを同期 (プレビューなし) |
 | `c42checker.proto.syncOnSave` | `false` | `.c` の保存時にプロトタイプを同期 (プレビューなし) |
-| `c42checker.proto.skipExisting` | `true` | マーカーの外で手書きの宣言がある関数は、ブロックに入れない |
+| `c42checker.proto.skipExisting` | `true` | 反映先のマーカーの外、または他のヘッダで、すでに宣言されている関数は、ブロックに入れない |
 | `c42checker.proto.updateExisting` | `true` | マーカーの外の手書きの宣言が、ソースと型 (戻り値・引数) で食い違うときは、ソースの型に書き換える |
 | `c42checker.debug.cwd` / `.terminal` | `${workspaceFolder}` / `integrated` | launch 構成に反映 |
 | `c42checker.checks` | (全項目。TSan / MSan / CBMC / Frama-C のみ `false`) | チェックボックスの状態 (View から変更すると保存される) |
@@ -454,7 +456,7 @@ Node.js 22 以上が必要です (`.nvmrc`、`package.json` の `engines`)。
 npm ci
 npm run typecheck   # tsc --noEmit
 npm run build       # esbuild で dist/extension.js に bundle
-npm test            # 260 件。実際のツール (norminette / clang / valgrind など) があれば使い、無ければ該当項目は skip
+npm test            # 263 件。実際のツール (norminette / clang / valgrind など) があれば使い、無ければ該当項目は skip
 npm run package     # .vsix を作る
 ```
 

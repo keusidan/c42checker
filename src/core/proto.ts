@@ -323,6 +323,8 @@ export type SyncPlan =
       skippedExisting: number;
       /** マーカーの外の手書きの宣言のうち、ソースの型に合わせて書き換える案 (c42checker.proto.updateExisting) */
       updatedExisting: DeclEdit[];
+      /** 反映先とは別のヘッダで、すでに宣言されているため、ブロックに入れなかった関数 */
+      skippedElsewhere: ElsewhereDecl[];
       excluded: number;
       tooLong: string[];
       changed: boolean;
@@ -337,9 +339,16 @@ export type SyncPlan =
       count: number;
       skippedExisting: number;
       updatedExisting: DeclEdit[];
+      skippedElsewhere: ElsewhereDecl[];
       tooLong: string[];
       log: string;
     };
+
+export interface ElsewhereDecl {
+  name: string;
+  /** 宣言しているヘッダ (絶対パス) */
+  header: string;
+}
 
 export interface PlanOptions {
   /** ヘッダを明示する (絶対パス)。設定より優先 */
@@ -462,14 +471,42 @@ export async function planSync(ctx: Context, opts: PlanOptions = {}): Promise<Sy
     return at < 0 ? m : Math.max(m, visualWidth(text.slice(0, at).replace(/\*+$/, '')));
   }, 0);
 
-  const entries = ctx.settings.protoSkipExisting ? built.entries.filter((e) => !declared.has(e.name)) : built.entries;
-  const skippedExisting = built.entries.length - entries.length;
+  // 反映先とは別のヘッダが、すでに宣言している関数も入れない (二重宣言になるため)
+  const elsewhere = new Map<string, string>();
+  const notes: string[] = [];
+  if (ctx.settings.protoSkipExisting) {
+    const others = [...new Set([...ctx.headers, ...scanSources(ctx.root).headers])].filter((h) => h !== header);
+    if (others.length > 0) {
+      const od = await runCtags(ct.bin, others, ctx.root, ctx.settings.staticTimeoutSec * 1000, ctx.signal, 'fp');
+      if (!od.ok) {
+        notes.push(`他のヘッダの宣言を取得できなかったため、他のヘッダでの宣言済みの判定は行いません: ${od.error}`);
+      } else {
+        const markersOf = new Map<string, { begin: number; end: number } | undefined>();
+        for (const f of od.funcs) {
+          if (!markersOf.has(f.file)) markersOf.set(f.file, findMarkerLines(fs.readFileSync(f.file, 'utf8')));
+          const m = markersOf.get(f.file);
+          if (m && f.line > m.begin && f.line < m.end) continue; // 他のヘッダの auto prototypes のブロックは、手書きではないので数えない
+          if (!elsewhere.has(f.name)) elsewhere.set(f.name, f.file);
+        }
+      }
+    }
+  }
+  const inOther = ctx.settings.protoSkipExisting
+    ? built.entries.filter((e) => !declared.has(e.name) && elsewhere.has(e.name)).map((e) => ({ name: e.name, header: elsewhere.get(e.name)! }))
+    : [];
+  const entries = ctx.settings.protoSkipExisting ? built.entries.filter((e) => !declared.has(e.name) && !elsewhere.has(e.name)) : built.entries;
+  const skippedExisting = built.entries.length - entries.length - inOther.length;
   // 手書きの宣言が、ソースの型と食い違っていれば、ソースの型に合わせる (ブロックの外側の書き換え)
   const updatedExisting = ctx.settings.protoUpdateExisting ? alignExisting(srcLines, existing, built.entries) : [];
   const baseText = applyDeclEdits(oldText, updatedExisting);
   const { lines, tooLong } = renderBlock(entries, minNameCol);
   for (const e of updatedExisting) if (visualWidth(e.after) > MAX_COLUMNS) tooLong.push(e.name);
-  const log = run.log + (updatedExisting.length > 0 ? `\n手書きの宣言をソースの型に合わせます (${updatedExisting.length} 件):\n${updatedExisting.map((e) => `  ${path.relative(ctx.root, header)}:${e.line} ${e.before}\n    → ${e.after}`).join('\n')}\n` : '');
+  const rel = (p: string) => path.relative(ctx.root, p);
+  const log =
+    run.log +
+    notes.map((n) => `${n}\n`).join('') +
+    (inOther.length > 0 ? `\n他のヘッダで宣言済みのため、ブロックに入れません (${inOther.length} 件):\n${inOther.map((e) => `  ${e.name}  (${rel(e.header)})`).join('\n')}\n` : '') +
+    (updatedExisting.length > 0 ? `\n手書きの宣言をソースの型に合わせます (${updatedExisting.length} 件):\n${updatedExisting.map((e) => `  ${rel(header)}:${e.line} ${e.before}\n    → ${e.after}`).join('\n')}\n` : '');
   const rep = replaceBlock(baseText, lines);
   if (rep.ok) {
     return {
@@ -480,6 +517,7 @@ export async function planSync(ctx: Context, opts: PlanOptions = {}): Promise<Sy
       count: entries.length,
       skippedExisting,
       updatedExisting,
+      skippedElsewhere: inOther,
       excluded: built.excluded,
       tooLong,
       changed: rep.text !== oldText,
@@ -488,7 +526,7 @@ export async function planSync(ctx: Context, opts: PlanOptions = {}): Promise<Sy
   }
   if (rep.reason === 'no-markers') {
     const insertion = proposeInsertion(baseText, lines);
-    return { kind: 'needs-markers', header, oldText, newText: insertion.text, insertion, count: entries.length, skippedExisting, updatedExisting, tooLong, log };
+    return { kind: 'needs-markers', header, oldText, newText: insertion.text, insertion, count: entries.length, skippedExisting, updatedExisting, skippedElsewhere: inOther, tooLong, log };
   }
   return { kind: 'error', reason: rep.message, hint: `${MARKER_BEGIN} と ${MARKER_END} を 1 組だけ残してください` };
 }

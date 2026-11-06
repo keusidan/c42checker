@@ -593,3 +593,55 @@ test('proto.updateExisting: 既定は ON (DEFAULT_SETTINGS と package.json が�
   };
   assert.equal(pkg.contributes.configuration.properties['c42checker.proto.updateExisting'].default, true);
 });
+
+/* ───────── 他のヘッダが、すでに宣言している関数は入れない ───────── */
+
+const OTHER_DECLS = `#ifndef LIST_H
+# define LIST_H
+
+# include "proj.h"
+
+t_list\t*ft_lstnew(void *content);
+t_list\t**ft_lstpick(t_list **lst,
+\t\t\tvoid *(*f)(void *));
+
+#endif
+`;
+
+test('他のヘッダで宣言済みの関数は、ブロックに入れない (他のヘッダは書き換えない)。複数行の宣言も拾う', async (t) => {
+  const { ctx, dir, cleanup } = sampleContext('proto-ok');
+  const other = path.join(dir, 'includes', 'list.h');
+  fs.writeFileSync(other, OTHER_DECLS);
+  const plan = await planSync(ctx, { header: headerOf(dir) });
+  if (plan.kind === 'skip') return t.skip('ctags が無い');
+  assert.equal(plan.kind, 'ready');
+  const ready = plan as Extract<typeof plan, { kind: 'ready' }>;
+  assert.deepEqual(ready.skippedElsewhere.map((e) => e.name).sort(), ['ft_lstnew', 'ft_lstpick']);
+  assert.ok(ready.skippedElsewhere.every((e) => e.header === other));
+  assert.match(ready.log, /他のヘッダで宣言済みのため、ブロックに入れません \(2 件\)[\s\S]*ft_lstnew {2}\(includes\/list\.h\)/);
+  assert.equal(ready.skippedExisting, 0, '反映先の手書きの宣言ではない');
+
+  const r = await syncAuto(ctx, { header: headerOf(dir) });
+  assert.equal(r.status, 'updated', r.message);
+  assert.deepEqual(names(blockOf(read(headerOf(dir)))), ['ft_big', 'ft_strdup', 'ft_strlen']);
+  assert.equal(read(other), OTHER_DECLS, '他のヘッダは書き換えない');
+  cleanup();
+});
+
+test('他のヘッダの auto prototypes のブロックの中は、手書きではないので「宣言済み」に数えない', async (t) => {
+  const { ctx, dir, cleanup } = sampleContext('proto-ok');
+  fs.writeFileSync(path.join(dir, 'includes', 'list.h'), `#ifndef LIST_H\n# define LIST_H\n${MARKER_BEGIN}\nt_list\t*ft_lstnew(void *content);\n${MARKER_END}\n#endif\n`);
+  const r = await syncAuto(ctx, { header: headerOf(dir) });
+  if (r.status === 'skip') return t.skip('ctags が無い');
+  assert.ok(names(blockOf(read(headerOf(dir)))).includes('ft_lstnew'), '他のヘッダのブロックにあっても入る');
+  cleanup();
+});
+
+test('proto.skipExisting が OFF なら、他のヘッダで宣言済みでも全てブロックに入れる', async (t) => {
+  const { ctx, dir, cleanup } = sampleContext('proto-ok', { protoSkipExisting: false });
+  fs.writeFileSync(path.join(dir, 'includes', 'list.h'), OTHER_DECLS);
+  const r = await syncAuto(ctx, { header: headerOf(dir) });
+  if (r.status === 'skip') return t.skip('ctags が無い');
+  assert.deepEqual(names(blockOf(read(headerOf(dir)))), ['ft_big', 'ft_lstnew', 'ft_lstpick', 'ft_strdup', 'ft_strlen']);
+  cleanup();
+});

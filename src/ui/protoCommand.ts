@@ -204,6 +204,7 @@ export class ProtoSync implements vscode.Disposable {
     const notes = [
       plan.kind === 'needs-markers' ? `マーカーが無いため ${plan.insertion.line} 行目付近に挿入する案` : undefined,
       plan.skippedExisting > 0 ? `手書きの宣言 ${plan.skippedExisting} 件は除外` : undefined,
+      plan.skippedElsewhere.length > 0 ? `他のヘッダで宣言済みの ${plan.skippedElsewhere.length} 件は除外` : undefined,
       plan.updatedExisting.length > 0 ? `手書きの宣言 ${plan.updatedExisting.length} 件をソースの型に更新` : undefined,
       plan.tooLong.length > 0 ? `⚠ 80 桁超 ${plan.tooLong.length} 件` : undefined,
     ].filter((x): x is string => !!x);
