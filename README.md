@@ -319,7 +319,7 @@ code --install-extension llvm-vs-code-extensions.vscode-clangd
 
 - コマンドパレットの「42 Check: ヘッダにプロトタイプを反映」、または View の「ヘッダ」グループの項目から実行します。
 - 対象は `c42check.proto.sourceDir` 以下の `.c` (再帰。空なら `c42check.targetDir`)。**static 関数と `main` は除外**します。同名の定義が複数あれば (`#ifdef`) 最初の 1 つだけです。
-- 書き込み先は `c42check.proto.header` (空ならマーカーのあるヘッダを自動選択。複数あれば選択を求めます)。
+- 書き込み先は `c42check.proto.header` (空ならマーカーのあるヘッダを自動選択。複数あれば選択を求めます)。**View の「ヘッダ」グループの「反映先のヘッダ」** (またはコマンド「42 Check: プロトタイプの反映先のヘッダを選ぶ」) で、ワークスペースの全ての `.h` から選んで保存できます (一覧は、マーカーのあるヘッダが先頭。「自動で選ぶ」で設定を空に戻せます)。settings.json を手で書く必要はありません。
 - **書き換える前に、差分をプレビューで表示**し、承認してから書き込みます。承認は通知ではなく、**差分エディタのタイトルバーのボタン**です (✓ 反映する / ✕ キャンセル)。
   反映すると、ヘッダが書き換わり、差分エディタは閉じます (成功したときは、通知を出しません)。差分のタブを × で閉じると、キャンセルと同じです。
   差分の右側は読み取り専用の仮想ドキュメントなので、編集も保存もできません (Ctrl+S で保存ダイアログは出ません。反映は、ボタンで行います)。
@@ -393,7 +393,7 @@ code --install-extension llvm-vs-code-extensions.vscode-clangd
 | `c42check.compdb.includeMain` | `true` | `mainFile` を `compile_commands.json` に含めるか |
 | `c42check.compdb.source` | `"auto"` | `compile_commands.json` の生成方式 |
 | `c42check.debug.sanitizer` | `false` | デバッグ用ビルドに ASan + UBSan を付ける |
-| `c42check.proto.header` | `""` | プロトタイプを反映するヘッダ (空ならマーカーのあるヘッダを自動選択) |
+| `c42check.proto.header` | `""` | プロトタイプを反映するヘッダ (空ならマーカーのあるヘッダを自動選択)。View の「反映先のヘッダ」から選んで保存できる |
 | `c42check.proto.sourceDir` | `""` | 関数定義を抽出する `.c` のディレクトリ (空なら `targetDir`) |
 | `c42check.proto.syncOnRun` | `false` | 実行時 (段階 0) にプロトタイプを同期 (プレビューなし) |
 | `c42check.proto.syncOnSave` | `false` | `.c` の保存時にプロトタイプを同期 (プレビューなし) |
@@ -429,7 +429,7 @@ Node.js 22 以上が必要です (`.nvmrc`、`package.json` の `engines`)。
 npm ci
 npm run typecheck   # tsc --noEmit
 npm run build       # esbuild で dist/extension.js に bundle
-npm test            # 247 件。実際のツール (norminette / clang / valgrind など) があれば使い、無ければ該当項目は skip
+npm test            # 251 件。実際のツール (norminette / clang / valgrind など) があれば使い、無ければ該当項目は skip
 npm run package     # .vsix を作る
 ```
 

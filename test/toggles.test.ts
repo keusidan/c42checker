@@ -145,3 +145,16 @@ test('各検証項目に「この項目だけ実行」のボタンがある (ツ
   assert.ok(menus.every((m) => /viewItem == step/.test(m.when ?? '') && /!c42check\.running/.test(m.when ?? '')));
   assert.equal(t.getTreeItem(t.getChildren(group(t, 'gp'))[0]).contextValue, undefined, 'ヘッダの反映は、項目自体のクリックで単独実行できる (ボタンは不要)');
 });
+
+test('「ヘッダ」グループに「反映先のヘッダ」があり、現在の指定を見せ、クリックで選択コマンドを実行する', () => {
+  const t = tree();
+  const nodes = t.getChildren(group(t, 'gp'));
+  const item = t.getTreeItem(nodes[1]);
+  assert.equal(item.label, '反映先のヘッダ');
+  assert.match(String(item.description), /自動/);
+  assert.equal(item.command?.command, 'c42check.selectProtoHeader');
+  assert.equal(item.checkboxState, undefined);
+  state.config = { 'c42check.proto.header': 'includes/libft.h' };
+  assert.equal(t.getTreeItem(nodes[1]).description, 'includes/libft.h', '設定した値が表示される');
+  assert.ok(pkg.contributes.commands.some((c) => c.command === 'c42check.selectProtoHeader'));
+});

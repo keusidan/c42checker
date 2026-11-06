@@ -69,6 +69,7 @@ export function activate(context: vscode.ExtensionContext): void {
     reg('c42check.cancel', () => runner.cancel()),
     reg('c42check.refresh', () => tree.refresh()),
     reg('c42check.syncPrototypes', () => proto.runCommand()),
+    reg('c42check.selectProtoHeader', () => proto.selectHeader()),
     reg('c42check.applyProposal', () => proto.applyProposal()),
     reg('c42check.cancelProposal', () => proto.cancelProposal()),
     reg('c42check.showLog', (name?: string) => outputs.get(typeof name === 'string' ? name : 'main').show(true)),

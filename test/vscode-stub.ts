@@ -17,6 +17,9 @@ export const state = {
   statusBar: [] as string[],
   /** workspace.openTextDocument の呼び出し回数 (無題のドキュメントを作ると、保存ダイアログが出てしまう) */
   openedDocs: 0,
+  /** showQuickPick が選ぶ項目を決める関数 (undefined ならキャンセル)。渡された項目も記録する */
+  quickPick: undefined as ((items: { label: string }[]) => unknown) | undefined,
+  quickPickItems: [] as { label: string; description?: string; value?: string }[],
   /** showWarningMessage が選んだ項目 */
   warnChoice: undefined as string | undefined,
 };
@@ -63,6 +66,10 @@ export const window = {
     show: () => undefined,
     dispose: () => undefined,
   }),
+  showQuickPick: async (items: { label: string; description?: string; value?: string }[]) => {
+    state.quickPickItems = items;
+    return state.quickPick?.(items);
+  },
   showErrorMessage: ok,
   showWarningMessage: async (m: string) => {
     state.messages.push(m);

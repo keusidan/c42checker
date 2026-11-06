@@ -73,6 +73,12 @@
         "icon": "$(symbol-method)"
       },
       {
+        "command": "c42check.selectProtoHeader",
+        "title": "プロトタイプの反映先のヘッダを選ぶ",
+        "category": "42 Check",
+        "icon": "$(file-code)"
+      },
+      {
         "command": "c42check.cancel",
         "title": "実行を中止",
         "category": "42 Check",
@@ -371,7 +377,7 @@
         "c42check.proto.header": {
           "type": "string",
           "default": "",
-          "description": "プロトタイプを反映するヘッダ (ワークスペースルートからの相対パス)。空なら、マーカーのあるヘッダを自動で選びます (複数あれば選択を求めます)。"
+          "markdownDescription": "プロトタイプを反映するヘッダ (ワークスペースルートからの相対パス)。空なら、マーカーのあるヘッダを自動で選びます (複数あれば選択を求めます)。\n\nView の「ヘッダ」グループの「反映先のヘッダ」、またはコマンド「42 Check: プロトタイプの反映先のヘッダを選ぶ」で、一覧から選んで保存できます。"
         },
         "c42check.proto.sourceDir": {
           "type": "string",

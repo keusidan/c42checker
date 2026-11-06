@@ -22,6 +22,9 @@ type Stub = {
   statusBar: string[];
   openedDocs: number;
   warnChoice?: string;
+  updates: { key: string; value: unknown }[];
+  quickPick?: (items: { label: string; value?: string }[]) => unknown;
+  quickPickItems: { label: string; description?: string; value?: string }[];
 };
 const state = (vscode as unknown as { state: Stub }).state;
 const tabGroup = (vscode as unknown as { tabGroup: { tabs: unknown[]; activeTab: unknown } }).tabGroup;
@@ -37,6 +40,9 @@ function setup(overrides: Record<string, unknown> = {}) {
   state.statusBar = [];
   state.openedDocs = 0;
   state.warnChoice = undefined;
+  state.updates = [];
+  state.quickPick = undefined;
+  state.quickPickItems = [];
   tabGroup.tabs = [];
   tabGroup.activeTab = undefined;
   const outputs = new Outputs();
@@ -219,4 +225,50 @@ test('package.json: 差分エディタのタイトルバーに「反映する」
     assert.equal(m?.when, 'c42check.proposalActive');
     assert.ok(pkg.contributes.menus.commandPalette.some((x) => x.command === c && x.when === 'c42check.proposalActive'), 'ボタンが出ない場合の逃げ道: 反映案が開いているときだけ、コマンドパレットから実行できる');
   }
+});
+
+/* ───────── 反映先のヘッダを選ぶ (c42check.proto.header) ───────── */
+
+const OTHER_H = '#ifndef OTHER_H\n# define OTHER_H\n\nint\t\tother(void);\n\n#endif\n';
+
+test('反映先のヘッダを選ぶ: 一覧は「自動」が先頭、マーカーのあるヘッダが先。選ぶとワークスペース設定に相対パスで保存する', async () => {
+  const e = setup();
+  fs.writeFileSync(path.join(e.dir, 'includes', 'other.h'), OTHER_H);
+  state.quickPick = (items) => items.find((i) => i.value === 'includes/other.h');
+  await e.proto.selectHeader();
+  assert.equal(state.quickPickItems[0].value, '', '先頭は「自動で選ぶ」');
+  assert.match(state.quickPickItems[0].description ?? '', /現在/, '設定が空のときは、「自動」が現在');
+  const rels = state.quickPickItems.slice(1).map((i) => i.value);
+  assert.deepEqual(rels, ['includes/proj.h', 'includes/other.h'], 'マーカーのあるヘッダが先');
+  assert.match(state.quickPickItems[1].description ?? '', /auto prototypes あり/);
+  assert.deepEqual(state.updates, [{ key: 'c42check.proto.header', value: 'includes/other.h' }]);
+  e.cleanup();
+});
+
+test('反映先のヘッダを選ぶ: 「自動」を選ぶと設定を空に戻す / キャンセルなら何も書かない', async () => {
+  const e = setup();
+  state.config = { 'c42check.proto.header': 'includes/proj.h' };
+  state.quickPick = (items) => items[0];
+  await e.proto.selectHeader();
+  assert.deepEqual(state.updates, [{ key: 'c42check.proto.header', value: '' }]);
+  assert.match(state.quickPickItems[1].description ?? '', /現在/, '指定中のヘッダに「現在」が付く');
+
+  state.updates = [];
+  state.quickPick = () => undefined;
+  await e.proto.selectHeader();
+  assert.deepEqual(state.updates, [], 'キャンセルでは設定を変えない');
+  e.cleanup();
+});
+
+test('選んだヘッダが反映先になる: マーカーの無い別のヘッダを選ぶと、そのヘッダへの挿入案が開く (もう一方は触らない)', async (t) => {
+  const e = setup();
+  fs.writeFileSync(path.join(e.dir, 'includes', 'other.h'), OTHER_H);
+  state.quickPick = (items) => items.find((i) => i.value === 'includes/other.h');
+  await e.proto.selectHeader();
+  const before = e.read();
+  await e.proto.runCommand();
+  if (e.diffCalls().length === 0) return t.skip('ctags が無い');
+  assert.match(String(e.diffCalls()[0].args[2]), /includes\/other\.h/, '差分のタイトルが選んだヘッダ');
+  assert.equal(e.read(), before, 'proj.h は触らない');
+  e.cleanup();
 });

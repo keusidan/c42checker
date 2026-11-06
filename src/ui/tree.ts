@@ -3,7 +3,7 @@ import { INSTALL_HINTS, STEP_TOOL, detectTools } from '../core/tools';
 import { STEPS } from '../core/steps';
 import type { StepId, Tools } from '../core/types';
 import { TOGGLES } from '../core/toggles';
-import { readChecks, readToggle, toggleById, writeCheck, writeToggle } from './config';
+import { readChecks, readSettings, readToggle, toggleById, writeCheck, writeToggle } from './config';
 import type { NodeStatus, Runner } from './runner';
 
 const OPTIONAL: ReadonlySet<StepId> = new Set(['cbmc', 'framaC']);
@@ -12,7 +12,7 @@ type Node =
   | { kind: 'group'; id: string; label: string; ids?: StepId[]; items?: Node[] }
   | { kind: 'step'; id: StepId }
   | { kind: 'setting'; id: string }
-  | { kind: 'action'; id: 'syncPrototypes' };
+  | { kind: 'action'; id: 'syncPrototypes' | 'selectProtoHeader' };
 
 const GROUPS: Node[] = [
   { kind: 'group', id: 'g1', label: '段階 1: 事前チェック (静的)', ids: STEPS.filter((s) => s.stage === 1).map((s) => s.id) },
@@ -23,7 +23,7 @@ const GROUPS: Node[] = [
     ids: STEPS.filter((s) => s.stage === 2 && !OPTIONAL.has(s.id)).map((s) => s.id),
   },
   { kind: 'group', id: 'g3', label: '任意 (ネイティブのみ)', ids: [...OPTIONAL] },
-  { kind: 'group', id: 'gp', label: 'ヘッダ', items: [{ kind: 'action', id: 'syncPrototypes' }] },
+  { kind: 'group', id: 'gp', label: 'ヘッダ', items: [{ kind: 'action', id: 'syncPrototypes' }, { kind: 'action', id: 'selectProtoHeader' }] },
   { kind: 'group', id: 'gs', label: '設定', items: TOGGLES.map((t) => ({ kind: 'setting', id: t.id }) as Node) },
 ];
 
@@ -79,7 +79,7 @@ export class CheckTree implements vscode.TreeDataProvider<Node>, vscode.Disposab
       return item;
     }
     if (node.kind === 'setting') return this.settingItem(node.id);
-    if (node.kind === 'action') return this.actionItem();
+    if (node.kind === 'action') return node.id === 'selectProtoHeader' ? this.headerItem() : this.actionItem();
     const step = STEPS.find((s) => s.id === node.id)!;
     const status = this.runner.statusOf(node.id);
     const toolKey = STEP_TOOL[node.id];
@@ -138,6 +138,20 @@ export class CheckTree implements vscode.TreeDataProvider<Node>, vscode.Disposab
     if (missing) tip.appendMarkdown(`\n\n未検出: ${INSTALL_HINTS.ctags}`);
     item.tooltip = tip;
     item.command = { command: 'c42check.syncPrototypes', title: 'ヘッダにプロトタイプを反映' };
+    return item;
+  }
+
+  /** 「反映先のヘッダ」。現在の指定を見せ、クリックで一覧から選ぶ。 */
+  private headerItem(): vscode.TreeItem {
+    const current = readSettings().protoHeader;
+    const item = new vscode.TreeItem('反映先のヘッダ', vscode.TreeItemCollapsibleState.None);
+    item.id = 'action:selectProtoHeader';
+    item.iconPath = new vscode.ThemeIcon('file-code');
+    item.description = current || '自動 (マーカーのあるヘッダ)';
+    const tip = new vscode.MarkdownString();
+    tip.appendMarkdown('**反映先のヘッダ**\n\nクリックで、プロトタイプを反映するヘッダを一覧から選びます (設定 `c42check.proto.header` に保存)。「自動で選ぶ」を選ぶと、マーカー (auto prototypes) のあるヘッダを自動で選びます。');
+    item.tooltip = tip;
+    item.command = { command: 'c42check.selectProtoHeader', title: 'プロトタイプの反映先のヘッダを選ぶ' };
     return item;
   }
 

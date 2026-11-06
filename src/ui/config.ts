@@ -89,6 +89,11 @@ export async function writeCheck(id: StepId, value: boolean): Promise<void> {
   await cfg().update('checks', next, vscode.ConfigurationTarget.Workspace);
 }
 
+/** プロトタイプの反映先のヘッダ (ワークスペースルートからの相対パス。空なら自動選択) を、ワークスペース設定に保存する。 */
+export async function writeProtoHeader(rel: string): Promise<void> {
+  await cfg().update('proto.header', rel, vscode.ConfigurationTarget.Workspace);
+}
+
 export function selectedSteps(): StepId[] {
   const checks = readChecks();
   return STEP_IDS.filter((id) => checks[id]);

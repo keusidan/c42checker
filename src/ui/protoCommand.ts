@@ -2,8 +2,8 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { createContext } from '../core/context';
-import { applyPlan, checkHeaderNorm, planSync, protoSourceRoot, syncAuto, type SyncPlan } from '../core/proto';
-import { isFileDirty, readSettings, workspaceRoot } from './config';
+import { applyPlan, checkHeaderNorm, listHeaderChoices, planSync, protoSourceRoot, syncAuto, type SyncPlan } from '../core/proto';
+import { isFileDirty, readSettings, workspaceRoot, writeProtoHeader } from './config';
 import type { Problems } from './diagnostics';
 import type { Outputs } from './output';
 import type { Runner } from './runner';
@@ -75,6 +75,45 @@ export class ProtoSync implements vscode.Disposable {
     return createContext({ root, settings: readSettings(), isFileDirty, io: { log: () => undefined } });
   }
 
+  /**
+   * コマンド: プロトタイプの反映先のヘッダを選び、ワークスペースの設定 (c42check.proto.header) に保存する。
+   * 「自動」を選ぶと設定を空に戻す (マーカーのあるヘッダを自動で選ぶ)。
+   */
+  async selectHeader(): Promise<void> {
+    const ctx = this.makeContext();
+    if (!ctx) {
+      void vscode.window.showErrorMessage('42 Check: フォルダを開いてから実行してください。');
+      return;
+    }
+    const choices = listHeaderChoices(ctx);
+    if (choices.length === 0) {
+      void vscode.window.showErrorMessage('42 Check: ヘッダ (.h) が見つかりません。');
+      return;
+    }
+    const items = [
+      {
+        label: '$(sparkle) 自動で選ぶ',
+        description: ctx.settings.protoHeader === '' ? '現在' : '',
+        detail: 'マーカー (auto prototypes) のあるヘッダを自動で選びます。複数あれば、実行のたびに選択を求めます',
+        value: '',
+      },
+      ...choices.map((c) => ({
+        label: c.rel,
+        description: [c.current ? '現在' : '', c.hasMarkers ? 'auto prototypes あり' : ''].filter(Boolean).join(' / '),
+        detail: undefined as string | undefined,
+        value: c.rel,
+      })),
+    ];
+    const pick = await vscode.window.showQuickPick(items, {
+      title: 'プロトタイプを反映するヘッダを選んでください',
+      placeHolder: '選んだヘッダは、設定 c42check.proto.header (ワークスペース) に保存されます',
+      matchOnDescription: true,
+    });
+    if (!pick) return;
+    await writeProtoHeader(pick.value);
+    vscode.window.setStatusBarMessage(`42 Check: 反映先のヘッダ: ${pick.value || '自動'}`, 4000);
+  }
+
   /** コマンド: 差分をプレビューし、承認を取ってから書き込む。 */
   async runCommand(): Promise<void> {
     const ctx = this.makeContext();
@@ -98,7 +137,7 @@ export class ProtoSync implements vscode.Disposable {
     if (plan.kind === 'choose-header') {
       const pick = await vscode.window.showQuickPick(
         plan.candidates.map((c) => ({ label: rel(c), description: '', abs: c })),
-        { title: 'プロトタイプを反映するヘッダを選んでください', placeHolder: '設定 c42check.proto.header に指定すると、次回から聞きません' },
+        { title: 'プロトタイプを反映するヘッダを選んでください', placeHolder: 'View の「反映先のヘッダ」か、設定 c42check.proto.header に指定すると、次回から聞きません' },
       );
       if (!pick) return;
       plan = await planSync(ctx, { header: pick.abs });

@@ -352,6 +352,30 @@ export function protoSourceRoot(ctx: Context): string {
   return path.resolve(ctx.root, ctx.settings.protoSourceDir || ctx.settings.targetDir);
 }
 
+export interface HeaderChoice {
+  abs: string;
+  /** ワークスペースルートからの相対パス (c42check.proto.header に書く値) */
+  rel: string;
+  /** auto prototypes のマーカーがある */
+  hasMarkers: boolean;
+  /** 現在 c42check.proto.header に指定されている */
+  current: boolean;
+}
+
+/** 反映先に選べるヘッダ (ワークスペースの全ての .h)。マーカーのあるものを先に、あとはパス順。 */
+export function listHeaderChoices(ctx: Context): HeaderChoice[] {
+  const current = ctx.settings.protoHeader ? path.resolve(ctx.root, ctx.settings.protoHeader) : undefined;
+  const all = [...new Set([...ctx.headers, ...scanSources(ctx.root).headers])];
+  return all
+    .map((abs) => ({
+      abs,
+      rel: path.relative(ctx.root, abs).split(path.sep).join('/'),
+      hasMarkers: fs.readFileSync(abs, 'utf8').includes(MARKER_BEGIN),
+      current: abs === current,
+    }))
+    .sort((a, b) => Number(b.hasMarkers) - Number(a.hasMarkers) || (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0));
+}
+
 function resolveHeader(ctx: Context, sourceRoot: string, opts: PlanOptions): { header?: string; candidates?: string[]; error?: string } {
   if (opts.header) return { header: opts.header };
   if (ctx.settings.protoHeader) {
