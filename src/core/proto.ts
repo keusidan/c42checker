@@ -481,13 +481,8 @@ export async function planSync(ctx: Context, opts: PlanOptions = {}): Promise<Sy
       if (!od.ok) {
         notes.push(`他のヘッダの宣言を取得できなかったため、他のヘッダでの宣言済みの判定は行いません: ${od.error}`);
       } else {
-        const markersOf = new Map<string, { begin: number; end: number } | undefined>();
-        for (const f of od.funcs) {
-          if (!markersOf.has(f.file)) markersOf.set(f.file, findMarkerLines(fs.readFileSync(f.file, 'utf8')));
-          const m = markersOf.get(f.file);
-          if (m && f.line > m.begin && f.line < m.end) continue; // 他のヘッダの auto prototypes のブロックは、手書きではないので数えない
-          if (!elsewhere.has(f.name)) elsewhere.set(f.name, f.file);
-        }
+        // 他のヘッダの auto prototypes のブロックの中も、宣言済みとして数える (別のヘッダが自動で入れたものも、二重宣言になるため)
+        for (const f of od.funcs) if (!elsewhere.has(f.name)) elsewhere.set(f.name, f.file);
       }
     }
   }

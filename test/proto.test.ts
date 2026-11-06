@@ -628,12 +628,31 @@ test('他のヘッダで宣言済みの関数は、ブロックに入れない (
   cleanup();
 });
 
-test('他のヘッダの auto prototypes のブロックの中は、手書きではないので「宣言済み」に数えない', async (t) => {
+test('他のヘッダの auto prototypes のブロックの中 (別のヘッダが自動で入れたもの) も、宣言済みとして入れない', async (t) => {
   const { ctx, dir, cleanup } = sampleContext('proto-ok');
-  fs.writeFileSync(path.join(dir, 'includes', 'list.h'), `#ifndef LIST_H\n# define LIST_H\n${MARKER_BEGIN}\nt_list\t*ft_lstnew(void *content);\n${MARKER_END}\n#endif\n`);
+  const other = path.join(dir, 'includes', 'list.h');
+  const otherText = `#ifndef LIST_H\n# define LIST_H\n${MARKER_BEGIN}\nt_list\t*ft_lstnew(void *content);\n${MARKER_END}\n#endif\n`;
+  fs.writeFileSync(other, otherText);
   const r = await syncAuto(ctx, { header: headerOf(dir) });
   if (r.status === 'skip') return t.skip('ctags が無い');
-  assert.ok(names(blockOf(read(headerOf(dir)))).includes('ft_lstnew'), '他のヘッダのブロックにあっても入る');
+  assert.equal(r.status, 'updated', r.message);
+  assert.deepEqual(names(blockOf(read(headerOf(dir)))), ['ft_big', 'ft_lstpick', 'ft_strdup', 'ft_strlen'], 'ft_lstnew は他のヘッダのブロックにあるので入らない');
+  assert.equal(read(other), otherText, '他のヘッダは書き換えない');
+  cleanup();
+});
+
+test('両方のヘッダにマーカーがあっても、同じ関数を両方に入れない (先に同期した方に入り、後の方は重複を除く)', async (t) => {
+  const { ctx, dir, cleanup } = sampleContext('proto-ok');
+  const second = path.join(dir, 'includes', 'second.h');
+  fs.writeFileSync(second, `#ifndef SECOND_H\n# define SECOND_H\n${MARKER_BEGIN}\n${MARKER_END}\n#endif\n`);
+  const a = await syncAuto(ctx, { header: headerOf(dir) });
+  if (a.status === 'skip') return t.skip('ctags が無い');
+  const first = names(blockOf(read(headerOf(dir))));
+  assert.deepEqual(first, ['ft_big', 'ft_lstnew', 'ft_lstpick', 'ft_strdup', 'ft_strlen'], '先に同期した方に全て入る');
+  const b = await syncAuto(ctx, { header: second });
+  assert.notEqual(b.status, 'error', b.message);
+  assert.deepEqual(names(blockOf(read(second))), [], '後から同期した方には、重複するものを入れない');
+  assert.deepEqual(names(blockOf(read(headerOf(dir)))), first, '先の方は変わらない');
   cleanup();
 });
 
