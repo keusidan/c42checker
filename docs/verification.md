@@ -48,7 +48,7 @@ npm test        # = node esbuild.mjs --test && node --test "out-test/*.test.js"
 - `test/launch.test.ts`: launch.json / tasks.json の生成とマージ (既存項目は変更しない)
 - `test/setarch.test.ts` の「案内文」: TSan / MSan が起動できず skip になったときの対処案が、setarch -R で回避済みか・setarch が無いか・setarch が使えないか、に合わせて変わること (古い「sudo sysctl (校舎では不可)」を出さないこと)
 - `test/protoui.test.ts`: 「ヘッダにプロトタイプを反映」の UI の流れ。差分エディタを開くだけでヘッダは変えないこと、**通知を出さないこと**、**無題のドキュメントを作らないこと** (`Untitled-1.c` の保存ダイアログの原因)、「反映する」でヘッダが書き換わり差分エディタが閉じること、「キャンセル」と × で閉じたときの扱い、前の案を閉じて 1 つだけ開くこと、差分を開いている間のヘッダの変更・未保存の変更の検出、norminette が指摘したときだけ通知して「元に戻す」で戻ること
-- `test/exclude.test.ts`: `c42check.normExclude` (既定 `main.c`)。パターンの一致規則 (ファイル名 / 相対パス / ディレクトリ / glob)、norminette と c_formatter_42 から外れること、サブディレクトリの `main.c` と `/main.c` の違い、**他のチェック (警告強化ビルド) は除外したファイルにも効くこと**、全て除外されたときの skip、**プロトタイプ同期でも除外したファイルの関数を拾わないこと**、既定値と VS Code の設定からの読み込み
+- `test/exclude.test.ts`: `c42checker.normExclude` (既定 `main.c`)。パターンの一致規則 (ファイル名 / 相対パス / ディレクトリ / glob)、norminette と c_formatter_42 から外れること、サブディレクトリの `main.c` と `/main.c` の違い、**他のチェック (警告強化ビルド) は除外したファイルにも効くこと**、全て除外されたときの skip、**プロトタイプ同期でも除外したファイルの関数を拾わないこと**、既定値と VS Code の設定からの読み込み
 - `test/setarch.test.ts`: TSan / MSan の `setarch -R` 経由の起動。本物の setarch で ASLR が実際に止まること (スタック位置が毎回同じ)、`setarch <arch> -R <prog>` の引数、personality を変えられない環境での再実行、setarch が無い環境、ASan と valgrind は使わないこと、繰り返し実行しても毎回検出すること
 - `test/compileargs.test.ts`: コンパイル引数の設定。引数の正規化 (`${workspaceFolder}` の展開、shell 風の分割、shell を介さないこと)、静的ライブラリ `libfoo.a` を使った `-L` / `-l` の検証 (指定が無ければリンク失敗、`ldflags` に `-l` を書くと失敗、`libs` なら成功)、`-D` が必須の課題が全ての項目で通ること、`compile_commands.json` への反映、`perStep` / `warningFlags` / `clangTidy.checks` / `valgrind.args`、VS Code の設定からの読み込みと型が違うときの既定値への戻り、package.json の既定値と DEFAULT_SETTINGS の一致、`ignoreMakefile` (壊れた Makefile があっても `compile_commands.json` と scan-build が `compile.cflags` で動く・Makefile の検査は skip。偽の scan-build の引数で、`make` を呼ばず `.c` を直接コンパイルすることを確認)
 - `test/formatter.test.ts`: c_formatter_42 (0.2.8)。norminette の前に実行される順序、norm 違反が減ること、退避、冪等性、**整形でコードが壊れたら元に戻して fail** (長い文字列リテラル / include の順序依存)、未保存ファイルの skip、ツール無しの skip、`.clang-format` に触れないこと、TSan / MSan の起動時 SEGV の判定
@@ -69,7 +69,7 @@ npm test        # = node esbuild.mjs --test && node --test "out-test/*.test.js"
 
 `samples/ok` で、準備 → norminette → 警告強化ビルド → clang-tidy → scan-build → gcc -fanalyzer → ASan + UBSan → valgrind → デバッグ用ビルド (`.42check/debug/prog`) が**すべて pass**
 (テスト `正常なサンプル: 段階 0〜2 がすべて通る` と `pre-debug (正常)`)。
-`samples/lib-ok` (main 無しのライブラリ課題) も、`c42check.mainFile` を指定すると動的チェックとデバッグ用ビルドまで pass。
+`samples/lib-ok` (main 無しのライブラリ課題) も、`c42checker.mainFile` を指定すると動的チェックとデバッグ用ビルドまで pass。
 
 段階 3 (CodeLLDB によるデバッガ起動そのもの) は VS Code が必要なため**未実行**。実機の手順は下記。
 
@@ -93,7 +93,7 @@ npm test        # = node esbuild.mjs --test && node --test "out-test/*.test.js"
 
 確認できていること (stub での検証):
 
-- `preLaunchTask` に相当する Task (`c42check` type) が、失敗時に**終了コード非 0** で閉じる
+- `preLaunchTask` に相当する Task (`c42checker` type) が、失敗時に**終了コード非 0** で閉じる
 - 失敗時は `.42check/` を最初に削除するため、**`.42check/debug/prog` が存在しない**。
   万一 VS Code が「Debug Anyway」でデバッガを起動しても、CodeLLDB は存在しない `program` を起動できない (二重の保険)
 
@@ -104,8 +104,8 @@ npm test        # = node esbuild.mjs --test && node --test "out-test/*.test.js"
 **実機での手順**:
 
 1. `samples/norm-ng` をフォルダとして VS Code で開く
-2. コマンドパレット → `42 Check: launch.json / tasks.json を生成・更新` → `debug.onTaskErrors` を `abort` にする提案を承認
-3. `main.c` を開いて F5。「Debug (42 Check: 事前チェック → LLDB)」が選ばれていること
+2. コマンドパレット → `c42checker: launch.json / tasks.json を生成・更新` → `debug.onTaskErrors` を `abort` にする提案を承認
+3. `main.c` を開いて F5。「Debug (c42checker: 事前チェック → LLDB)」が選ばれていること
 4. 期待: Problems に norminette の診断が出る / 通知に「段階 1 の norminette で失敗しました。後続の段階は実行していません」 / **デバッガは起動しない**
 5. 対照: 構成を「Debug (skip checks) ※事前チェックを飛ばす」に切り替えて F5 → デバッガが起動する
 6. `samples/ok` で F5 → 事前チェック通過後にデバッガが起動し、breakpoint で止まる
@@ -143,10 +143,10 @@ CodeLLDB と clangd は別計測で、校舎の実機での実測は CodeLLDB 16
 
 ## その他、VS Code 上で確認してほしいこと (未実行)
 
-- View のチェックボックスの状態が `.vscode/settings.json` (`c42check.checks`) に保存され、再読み込み後も残る
+- View のチェックボックスの状態が `.vscode/settings.json` (`c42checker.checks`) に保存され、再読み込み後も残る
 - View タイトルの「実行」ボタン / ステータスバー / コマンドパレットから実行でき、実行中は中止ボタンに変わる
 - 成功 / 失敗 / skip のアイコンが各項目に付く。未検出のツールは「未検出」と出て、実行すると skip になる
-- Problems パネルに、ファイル・行・列つきの診断が出る (ツールごとに `42check:<tool>` の source)
+- Problems パネルに、ファイル・行・列つきの診断が出る (ツールごとに `c42checker:<tool>` の source)
 - `ms-vscode.cpptools` を入れた状態で、競合の通知が出る (設定は書き換わらない)
 - `clangd` が PATH に無い状態で、容量の注意 (`df -h ~`) が通知される
 - 既存の `launch.json` がある状態で `launch.json / tasks.json を生成・更新` を実行すると、上書きされずに差分が表示され、承認後にだけ追記される
@@ -202,14 +202,14 @@ skip が残る場合は、その項目の Output Channel のログ (`$ setarch .
 
 ## ヘッダへのプロトタイプ反映: 差分エディタのボタンと、手書きの宣言との重複 (実機のスクリーンショットの指摘)
 
-- **`Untitled-1.c` の保存ダイアログ**: 実装の不備だった。差分の右側を「無題の新規ドキュメント」として開いていたため、保存すると保存ダイアログが出た。読み取り専用の仮想ドキュメント (`c42check-proposal:`) に変更し、無題のドキュメントを作らない (テストで確認)。
+- **`Untitled-1.c` の保存ダイアログ**: 実装の不備だった。差分の右側を「無題の新規ドキュメント」として開いていたため、保存すると保存ダイアログが出た。読み取り専用の仮想ドキュメント (`c42checker-proposal:`) に変更し、無題のドキュメントを作らない (テストで確認)。
 - **反映後に差分が残りっぱなし / 通知**: 承認を通知から、差分エディタのタイトルバーのボタンに変更。反映・キャンセルで差分エディタを閉じ、成功時は通知を出さない。
-- **手書きの宣言との重複**: ヘッダの宣言を ctags で取得し、マーカーの外で宣言済みの関数をブロックに入れない (`c42check.proto.skipExisting`、既定 ON)。ご提示のヘッダと同じ形 (`//part1` と手書きの宣言、複数行の宣言、`static inline` の定義を含む) で ctags が宣言を取得できることを確認した。
+- **手書きの宣言との重複**: ヘッダの宣言を ctags で取得し、マーカーの外で宣言済みの関数をブロックに入れない (`c42checker.proto.skipExisting`、既定 ON)。ご提示のヘッダと同じ形 (`//part1` と手書きの宣言、複数行の宣言、`static inline` の定義を含む) で ctags が宣言を取得できることを確認した。
 
 **未確認 (VS Code 本体でしか確認できない)**: タイトルバーの「反映する / キャンセル」ボタンが、反映案の差分エディタを開いたときに**実際に表示されること**。
-ボタンは、コンテキストキー `c42check.proposalActive` (「いま開いているタブが反映案の差分か」を拡張が設定する) で出し分けている。stub のテストでは、このキーが差分を開くと true、閉じると false になることまで確認した。
+ボタンは、コンテキストキー `c42checker.proposalActive` (「いま開いているタブが反映案の差分か」を拡張が設定する) で出し分けている。stub のテストでは、このキーが差分を開くと true、閉じると false になることまで確認した。
 表示されない場合は、差分エディタのタイトルバー (右上の `…` を含む) を確認し、なければ教えてほしい。
-**逃げ道**: 反映案の差分が開いているときだけ、コマンドパレット (Ctrl+Shift+P) から「42 Check: プロトタイプを反映する」「42 Check: 反映案をキャンセル」を実行できる (ボタンが出ない場合でも、反映できる)。
+**逃げ道**: 反映案の差分が開いているときだけ、コマンドパレット (Ctrl+Shift+P) から「c42checker: プロトタイプを反映する」「c42checker: 反映案をキャンセル」を実行できる (ボタンが出ない場合でも、反映できる)。
 
 
 ## Norm の (*) 規則と Makefile の検査 (norminette が検査しないもの)
@@ -222,7 +222,7 @@ skip が残る場合は、その項目の Output Channel のログ (`$ setarch .
 - Makefile: 本物の `make` で、relink (毎回リビルド / 常に古い扱いの目標)・all が既定でない・clean で `.o` が残る・fclean で成果物が残る・規則が無い・make 自体の失敗・wildcard を検出する。元のプロジェクトにはビルド成果物を作らない
 
 **確認できていないこと**:
-- 実際の 42 の課題 (libft、minishell など) での**誤検知の率**。判定は、誤検知より見逃しを選ぶ側に倒していますが、実プロジェクトでの実測はしていません。続く誤検知は `c42check.normExtra.disable` で規則ごとに外せます
+- 実際の 42 の課題 (libft、minishell など) での**誤検知の率**。判定は、誤検知より見逃しを選ぶ側に倒していますが、実プロジェクトでの実測はしていません。続く誤検知は `c42checker.normExtra.disable` で規則ごとに外せます
 - 実際の VS Code / clangd で、`compile_commands.json` を書き直さなくなったことによる再解析の減少 (更新時刻が変わらないことまでは、自動テストで確認)
 - 校舎の clang-12 での `unused-include` の判定 (本環境は clang 18)。診断が増えるかを比べる方式なので、版による warning / error の違い (暗黙の関数宣言など) には影響されない設計ですが、実機では未確認です
 - 削除機能を、実際の 42 の課題の `.c` / `.h` に使ったときの結果 (どの include が消えるか)。削除前に構文チェックが通っていることを確かめ、通らなくなれば元に戻す安全弁はありますが、リンクや実行時の挙動 (`#ifdef` で切り替わる実装など) までは確かめません。Git で差分を確認してください
@@ -248,13 +248,13 @@ skip が残る場合は、その項目の Output Channel のログ (`$ setarch .
 
 ## 項目の単一実行と、手書きの宣言をソースの型に合わせる (利用者の要望)
 
-- **単一実行**: View の各項目の ▷ ボタン / コマンド `c42check.runStep` で、チェックの状態に関係なく 1 項目だけ実行する (`Runner.run(mode, sink, only)`)。自動テストで、他の項目 (既定でチェック済みの ASan など) が実行されないこと、前回の結果が入れ替わること、`contextValue` と `package.json` の menus の条件が一致することを確認した。VS Code 上でボタンが出ることは、実機では未確認 (stub のため)。
-- **手書きの宣言の型合わせ** (`c42check.proto.updateExisting`、既定 ON): それまでは、`proto.skipExisting` により、手書きの宣言があるとソースの型が変わってもヘッダは古いままだった。ヘッダの宣言を ctags の `end:` フィールド (`--fields=+KSte`) で範囲ごと取得し、ソースの定義と型 (戻り値・引数の型。名前と空白は無視) が違うものだけを書き換える。`end:` が複数行の宣言の最後の行を返すことは、本環境の universal-ctags 5.9.0 で、実際の出力を見て確認した。
+- **単一実行**: View の各項目の ▷ ボタン / コマンド `c42checker.runStep` で、チェックの状態に関係なく 1 項目だけ実行する (`Runner.run(mode, sink, only)`)。自動テストで、他の項目 (既定でチェック済みの ASan など) が実行されないこと、前回の結果が入れ替わること、`contextValue` と `package.json` の menus の条件が一致することを確認した。VS Code 上でボタンが出ることは、実機では未確認 (stub のため)。
+- **手書きの宣言の型合わせ** (`c42checker.proto.updateExisting`、既定 ON): それまでは、`proto.skipExisting` により、手書きの宣言があるとソースの型が変わってもヘッダは古いままだった。ヘッダの宣言を ctags の `end:` フィールド (`--fields=+KSte`) で範囲ごと取得し、ソースの定義と型 (戻り値・引数の型。名前と空白は無視) が違うものだけを書き換える。`end:` が複数行の宣言の最後の行を返すことは、本環境の universal-ctags 5.9.0 で、実際の出力を見て確認した。
   確認したこと (自動テスト、実際の ctags): 型が違うときだけ書き換える / 名前だけ違うときは書き換えない / 複数行の宣言が 1 行になる / 元の桁を保つ / コメント・`extern`・インデント・1 行に複数の宣言は触らない / マーカーが無いヘッダでは提案にだけ含め、書き込まない / 2 回目は変更なし / OFF では触らない。
   **未確認**: 実際の 42 の課題 (libft など) のヘッダでの結果。`#ifdef` の中の宣言や、`typedef` した関数ポインタ型の引数は、型の比較を文字列で行うため、書き方が違うだけで食い違いと判定しうる (その場合は書き換え案が差分に出るので、承認時に確認できる)。
 
 ## 反映先のヘッダを画面から選ぶ (利用者の要望)
 
-設定 `c42check.proto.header` は以前からあったが、settings.json を手で書く必要があった。View の「ヘッダ」グループの「反映先のヘッダ」(コマンド `c42check.selectProtoHeader`) で、ワークスペースの全ての `.h` から選び、ワークスペースの設定に相対パスで保存する。
-自動テスト (stub の QuickPick) で確認したこと: 一覧の先頭が「自動で選ぶ」で、マーカーのあるヘッダが先 / 現在の指定に「現在」が付く / 選ぶと `c42check.proto.header` に相対パスが保存される / 「自動」で空に戻る / キャンセルでは何も書かない / 選んだヘッダが次の「ヘッダにプロトタイプを反映」の対象になり、もう一方のヘッダは触られない / ツリーの項目が現在の指定を表示する。
+設定 `c42checker.proto.header` は以前からあったが、settings.json を手で書く必要があった。View の「ヘッダ」グループの「反映先のヘッダ」(コマンド `c42checker.selectProtoHeader`) で、ワークスペースの全ての `.h` から選び、ワークスペースの設定に相対パスで保存する。
+自動テスト (stub の QuickPick) で確認したこと: 一覧の先頭が「自動で選ぶ」で、マーカーのあるヘッダが先 / 現在の指定に「現在」が付く / 選ぶと `c42checker.proto.header` に相対パスが保存される / 「自動」で空に戻る / キャンセルでは何も書かない / 選んだヘッダが次の「ヘッダにプロトタイプを反映」の対象になり、もう一方のヘッダは触られない / ツリーの項目が現在の指定を表示する。
 **未確認**: 実際の VS Code での QuickPick とツリー項目の表示 (stub のため)。ご提示の `libft.h` のように、手書きの宣言とマーカーのブロックが 1 つのヘッダにある形は、これまでと同じく扱える。

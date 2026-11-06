@@ -52,15 +52,15 @@ export class Runner implements vscode.Disposable {
   async run(mode: RunMode, sink?: Sink, only?: StepId[]): Promise<number> {
     const root = workspaceRoot();
     if (!root) {
-      void vscode.window.showErrorMessage('42 Check: フォルダを開いてから実行してください。');
+      void vscode.window.showErrorMessage('c42checker: フォルダを開いてから実行してください。');
       return 1;
     }
     if (!vscode.workspace.isTrusted) {
-      void vscode.window.showErrorMessage('42 Check: 信頼されていないワークスペースでは実行できません (Makefile の評価と対象プログラムの実行を行うため)。');
+      void vscode.window.showErrorMessage('c42checker: 信頼されていないワークスペースでは実行できません (Makefile の評価と対象プログラムの実行を行うため)。');
       return 1;
     }
     if (this.abort) {
-      void vscode.window.showWarningMessage('42 Check: すでに実行中です。');
+      void vscode.window.showWarningMessage('c42checker: すでに実行中です。');
       return 1;
     }
 
@@ -70,7 +70,7 @@ export class Runner implements vscode.Disposable {
     this.running.clear();
     this.problems.clear();
     this.outputs.clearAll();
-    await vscode.commands.executeCommand('setContext', 'c42check.running', true);
+    await vscode.commands.executeCommand('setContext', 'c42checker.running', true);
     this.emitter.fire();
 
     const main = this.outputs.get('main');
@@ -80,7 +80,7 @@ export class Runner implements vscode.Disposable {
     };
     const settings = readSettings();
     const selected = mode === 'build-debug' ? [] : (only ?? selectedSteps());
-    say(`42 Check (${mode}) — failFast: ${settings.failFast}, 対象: ${selected.join(', ') || '(なし)'}`);
+    say(`c42checker (${mode}) — failFast: ${settings.failFast}, 対象: ${selected.join(', ') || '(なし)'}`);
 
     let report: PipelineReport | undefined;
     try {
@@ -98,7 +98,7 @@ export class Runner implements vscode.Disposable {
           onStage: (stage, label) => say(`\n── ${label} ──`),
           onStepStart: (id, label) => {
             this.running.add(id);
-            this.statusBar.text = `$(sync~spin) 42 Check: ${label}`;
+            this.statusBar.text = `$(sync~spin) c42checker: ${label}`;
             this.emitter.fire();
             say(`▶ ${label}`);
           },
@@ -110,8 +110,8 @@ export class Runner implements vscode.Disposable {
     } finally {
       this.abort = undefined;
       this.running.clear();
-      this.statusBar.text = '$(checklist) 42 Check';
-      await vscode.commands.executeCommand('setContext', 'c42check.running', false);
+      this.statusBar.text = '$(checklist) c42checker';
+      await vscode.commands.executeCommand('setContext', 'c42checker.running', false);
       this.emitter.fire();
     }
 
@@ -146,7 +146,7 @@ export class Runner implements vscode.Disposable {
       say(`\n✘ ${where} で止まりました。後続の段階は実行していません。`);
       void vscode.window
         .showErrorMessage(
-          `42 Check: ${where} で失敗しました${s.reason ? ` (${s.reason})` : ''}。後続の段階は実行していません。`,
+          `c42checker: ${where} で失敗しました${s.reason ? ` (${s.reason})` : ''}。後続の段階は実行していません。`,
           'ログを表示',
           'Problems を開く',
         )
@@ -162,7 +162,7 @@ export class Runner implements vscode.Disposable {
     } else {
       say('\n✔ すべて通りました。');
       const skipNote = report.skipped.length ? ` (skip ${report.skipped.length} 件: ${report.skipped.map((s) => s.label).join(', ')})` : '';
-      void vscode.window.showInformationMessage(`42 Check: 通過しました${skipNote}`);
+      void vscode.window.showInformationMessage(`c42checker: 通過しました${skipNote}`);
     }
   }
 

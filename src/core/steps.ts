@@ -44,7 +44,7 @@ export interface StepDef {
 
 const NO_SOURCES: Skip = {
   reason: '対象の .c ファイルがありません',
-  hint: '設定 `c42check.targetDir` を確認してください',
+  hint: '設定 `c42checker.targetDir` を確認してください',
 };
 
 function needTool(ctx: Context, key: keyof Tools, label: string): Skip | undefined {
@@ -69,8 +69,8 @@ export function normTargets(ctx: Context): string[] {
 }
 
 const NO_NORM_TARGETS: Skip = {
-  reason: '対象のファイルが全て c42check.normExclude で除外されています',
-  hint: '設定 `c42check.normExclude` を確認してください',
+  reason: '対象のファイルが全て c42checker.normExclude で除外されています',
+  hint: '設定 `c42checker.normExclude` を確認してください',
 };
 
 const staticMs = (ctx: Context) => ctx.settings.staticTimeoutSec * 1000;
@@ -83,7 +83,7 @@ function hasError(diags: Diag[]): boolean {
 
 function verdict(code: number | null, diags: Diag[], output: string, extra?: { error?: string; timedOut?: boolean }): StepOutcome {
   if (extra?.timedOut) {
-    return { status: 'fail', diags, log: output, reason: '制限時間 (c42check.staticTimeoutSec) を超えました' };
+    return { status: 'fail', diags, log: output, reason: '制限時間 (c42checker.staticTimeoutSec) を超えました' };
   }
   if (extra?.error) return { status: 'fail', diags, log: output, reason: extra.error };
   const failed = code !== 0 || hasError(diags);
@@ -111,7 +111,7 @@ const cFormatter: StepDef = {
     ),
   async run(ctx) {
     const bin = ctx.tools.cFormatter!;
-    const files = normTargets(ctx); // c42check.normExclude (既定: main.c) は整形しない
+    const files = normTargets(ctx); // c42checker.normExclude (既定: main.c) は整形しない
     // エディタに未保存の変更があるファイルは、ディスク上を書き換えると編集中の内容と食い違うので整形しない
     const dirty = files.filter((f) => ctx.isFileDirty?.(f));
     if (dirty.length > 0) {
@@ -153,7 +153,7 @@ const cFormatter: StepDef = {
 
     if (r.timedOut) {
       restoreAll();
-      return { status: 'fail', diags: [], log, reason: '制限時間 (c42check.staticTimeoutSec) を超えました。整形は取り消しました' };
+      return { status: 'fail', diags: [], log, reason: '制限時間 (c42checker.staticTimeoutSec) を超えました。整形は取り消しました' };
     }
     if (r.error || r.code !== 0) {
       restoreAll();
@@ -229,7 +229,7 @@ const norminette: StepDef = {
       ctx.sources.length + ctx.headers.length > 0 && normTargets(ctx).length === 0 ? NO_NORM_TARGETS : undefined,
     ),
   async run(ctx) {
-    const files = normTargets(ctx).map((f) => path.relative(ctx.root, f)); // c42check.normExclude (既定: main.c) は検査しない
+    const files = normTargets(ctx).map((f) => path.relative(ctx.root, f)); // c42checker.normExclude (既定: main.c) は検査しない
     const bin = ctx.tools.norminette!;
     const args = [...stepArgs(ctx, 'norminette'), ...files];
     const r = await exec(bin, args, { cwd: ctx.root, timeoutMs: staticMs(ctx), signal: ctx.signal });
@@ -242,7 +242,7 @@ const norminette: StepDef = {
       if (f.dropped > 0) {
         output = f.text;
         if (f.remaining === 0 && !/: Error!$/m.test(f.text) && !r.error && !r.timedOut) code = 0;
-        note = `(c42check.norminette.ignoreParameterErrors: 関数の引数についての指摘を ${f.dropped} 件、結果から除きました: ${NORMINETTE_PARAMETER_CODES.join(' / ')})\n`;
+        note = `(c42checker.norminette.ignoreParameterErrors: 関数の引数についての指摘を ${f.dropped} 件、結果から除きました: ${NORMINETTE_PARAMETER_CODES.join(' / ')})\n`;
       }
     }
     const diags = parseNorminette(output, ctx.root);
@@ -406,7 +406,7 @@ const normExtraStep: StepDef = {
       diags,
       log,
       reason: parts.length ? parts.join('、') : undefined,
-      hint: failed ? '設定 `c42check.normExtra.disable` で、誤検知が続く規則だけを外せます (規則の id はログの [ ] の中)' : undefined,
+      hint: failed ? '設定 `c42checker.normExtra.disable` で、誤検知が続く規則だけを外せます (規則の id はログの [ ] の中)' : undefined,
     };
   },
 };
@@ -423,7 +423,7 @@ const makefileStep: StepDef = {
   note: 'Norm III.11 の Makefile の規則を検査します: `$(NAME)` `all` `clean` `fclean` `re` の規則、make だけで all が動く、2 回目の make で relink しない、ソースを明示 (wildcard なし)、同梱のライブラリを自動でビルドする。プロジェクトのコピーで実際に make を動かします (元のファイルは変えません)。',
   prerequisite: (ctx) =>
     first(
-      ctx.settings.ignoreMakefile ? { reason: 'c42check.ignoreMakefile が ON のため、Makefile は検査しません', hint: 'Makefile も検査するには、設定 `c42check.ignoreMakefile` を OFF にしてください' } : undefined,
+      ctx.settings.ignoreMakefile ? { reason: 'c42checker.ignoreMakefile が ON のため、Makefile は検査しません', hint: 'Makefile も検査するには、設定 `c42checker.ignoreMakefile` を OFF にしてください' } : undefined,
       projectMakefile(ctx) ? undefined : { reason: 'Makefile がありません', hint: 'Makefile を提出する課題だけが対象です' },
     ),
   async run(ctx) {
@@ -527,7 +527,7 @@ const scanBuild: StepDef = {
     };
 
     const makefile = ctx.hasMakefile ? findMakefile(ctx.targetRoot) : undefined; // ignoreMakefile が ON なら、Makefile があっても使わない
-    if (ctx.settings.ignoreMakefile) log += '(c42check.ignoreMakefile が ON のため、Makefile は使わず、.c を 1 つずつコンパイルします)\n';
+    if (ctx.settings.ignoreMakefile) log += '(c42checker.ignoreMakefile が ON のため、Makefile は使わず、.c を 1 つずつコンパイルします)\n';
     const targetCwd = path.join(copy, path.relative(ctx.root, ctx.targetRoot));
     if (makefile) {
       const target = ctx.settings.useMakeCheckTarget && makeTargetExists(makefile, 'check') ? ['check'] : [];
@@ -700,14 +700,14 @@ function sanitizerStep(spec: SanitizerSpec): StepDef {
       let log = b.output + cmdline(launch(viaSetarch).cmd, launch(viaSetarch).args);
       // setarch 自体が personality を変えられない環境 (seccomp など) では、ASLR を無効化せずに実行し直す
       if (viaSetarch && /setarch: .*personality/i.test(r.output)) {
-        log += r.output + '[c42check] setarch -R が使えない環境のため、ASLR を無効化せずに実行し直します\n';
+        log += r.output + '[c42checker] setarch -R が使えない環境のため、ASLR を無効化せずに実行し直します\n';
         viaSetarch = false;
         personalityFailed = true;
         r = await runWith(1, false);
         log += cmdline(launch(false).cmd, launch(false).args);
       }
       if (spec.leaks && /LeakSanitizer has encountered a fatal error|LeakSanitizer does not work under ptrace/.test(r.output)) {
-        log += r.output + '\n[c42check] この環境では LeakSanitizer が使えないため、リーク検査なしで再実行します (リークは valgrind 側で確認してください)\n';
+        log += r.output + '\n[c42checker] この環境では LeakSanitizer が使えないため、リーク検査なしで再実行します (リークは valgrind 側で確認してください)\n';
         r = await runWith(0, viaSetarch);
       }
       log += r.output;
@@ -738,7 +738,7 @@ function sanitizerStep(spec: SanitizerSpec): StepDef {
           diags: [],
           log,
           reason: `制限時間 ${timeoutMs / 1000} 秒で中断したため検査が完了していません`,
-          hint: '`c42check.runTimeoutSec` を延ばす、`c42check.runArgs` で終了する引数を渡す、または GUI / 無限ループの課題ならこの項目のチェックを外してください',
+          hint: '`c42checker.runTimeoutSec` を延ばす、`c42checker.runArgs` で終了する引数を渡す、または GUI / 無限ループの課題ならこの項目のチェックを外してください',
         };
       }
       const reported = spec.reported.test(r.output);
@@ -823,7 +823,7 @@ const valgrind: StepDef = {
         diags: [],
         log,
         reason: `制限時間 ${ctx.settings.runTimeoutSec * 5} 秒で中断したため検査が完了していません`,
-        hint: '`c42check.runTimeoutSec` を延ばす、`c42check.runArgs` で終了する引数を渡す、または GUI / 無限ループの課題ならこの項目のチェックを外してください',
+        hint: '`c42checker.runTimeoutSec` を延ばす、`c42checker.runArgs` で終了する引数を渡す、または GUI / 無限ループの課題ならこの項目のチェックを外してください',
       };
     }
     const parsed = parseValgrind(r.output, ctx.root);

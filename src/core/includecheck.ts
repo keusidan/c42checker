@@ -123,7 +123,7 @@ export async function judgeIncludes(input: IncludeCheckInput): Promise<IncludeCh
     // 判定に使うコンパイルの単位。.c はそのファイル自身。.h は、そのヘッダだけを include する小さな .c (先頭) と、そのヘッダを使う .c
     const units: string[] = [];
     if (file.endsWith('.h')) {
-      const stub = path.join(copyRoot, `.c42check-stub-${stubSeq++}.c`);
+      const stub = path.join(copyRoot, `.c42checker-stub-${stubSeq++}.c`);
       fs.writeFileSync(stub, `#include "${copyFile}"\n`);
       units.push(stub, ...input.includersOf(file).map((f) => path.join(copyRoot, path.relative(ctx.root, f))));
     } else units.push(copyFile);

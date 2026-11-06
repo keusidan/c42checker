@@ -68,7 +68,7 @@ test('コマンド: 差分エディタを開くだけ。ヘッダは変えず、
   assert.equal(left.scheme, 'file');
   assert.equal(right.scheme, PROPOSAL_SCHEME, '右側は、読み取り専用の仮想ドキュメント');
   assert.ok(right.path.endsWith('/includes/proj.h'), '拡張子が .h なので、C として色が付く');
-  assert.equal(state.context['c42check.proposalActive'], true, 'タイトルバーのボタンの表示条件');
+  assert.equal(state.context['c42checker.proposalActive'], true, 'タイトルバーのボタンの表示条件');
   assert.match(String(e.diffCalls()[0].args[2]), /^includes\/proj\.h ↔ プロトタイプ反映案 \(5 件\)$/);
   e.proto.dispose();
   e.cleanup();
@@ -92,7 +92,7 @@ test('「反映する」ボタン: ヘッダを書き換え、差分エディタ
   assert.match(e.read(), /char\t+\*ft_strdup\(const char \*s\);/);
   assert.equal(tabGroup.tabs.length, 0, '差分エディタが閉じる (反映後に差分が残りっぱなしにならない)');
   assert.deepEqual(state.messages, [], '成功時は通知を出さない');
-  assert.equal(state.context['c42check.proposalActive'], false);
+  assert.equal(state.context['c42checker.proposalActive'], false);
   const after = e.read();
   await e.proto.applyProposal(); // 2 回目は何もしない
   assert.equal(e.read(), after);
@@ -219,15 +219,15 @@ test('package.json: 差分エディタのタイトルバーに「反映する」
     };
   };
   const cmds = pkg.contributes.commands.map((c) => c.command);
-  for (const c of ['c42check.applyProposal', 'c42check.cancelProposal']) {
+  for (const c of ['c42checker.applyProposal', 'c42checker.cancelProposal']) {
     assert.ok(cmds.includes(c));
     const m = pkg.contributes.menus['editor/title'].find((x) => x.command === c);
-    assert.equal(m?.when, 'c42check.proposalActive');
-    assert.ok(pkg.contributes.menus.commandPalette.some((x) => x.command === c && x.when === 'c42check.proposalActive'), 'ボタンが出ない場合の逃げ道: 反映案が開いているときだけ、コマンドパレットから実行できる');
+    assert.equal(m?.when, 'c42checker.proposalActive');
+    assert.ok(pkg.contributes.menus.commandPalette.some((x) => x.command === c && x.when === 'c42checker.proposalActive'), 'ボタンが出ない場合の逃げ道: 反映案が開いているときだけ、コマンドパレットから実行できる');
   }
 });
 
-/* ───────── 反映先のヘッダを選ぶ (c42check.proto.header) ───────── */
+/* ───────── 反映先のヘッダを選ぶ (c42checker.proto.header) ───────── */
 
 const OTHER_H = '#ifndef OTHER_H\n# define OTHER_H\n\nint\t\tother(void);\n\n#endif\n';
 
@@ -241,16 +241,16 @@ test('反映先のヘッダを選ぶ: 一覧は「自動」が先頭、マーカ
   const rels = state.quickPickItems.slice(1).map((i) => i.value);
   assert.deepEqual(rels, ['includes/proj.h', 'includes/other.h'], 'マーカーのあるヘッダが先');
   assert.match(state.quickPickItems[1].description ?? '', /auto prototypes あり/);
-  assert.deepEqual(state.updates, [{ key: 'c42check.proto.header', value: 'includes/other.h' }]);
+  assert.deepEqual(state.updates, [{ key: 'c42checker.proto.header', value: 'includes/other.h' }]);
   e.cleanup();
 });
 
 test('反映先のヘッダを選ぶ: 「自動」を選ぶと設定を空に戻す / キャンセルなら何も書かない', async () => {
   const e = setup();
-  state.config = { 'c42check.proto.header': 'includes/proj.h' };
+  state.config = { 'c42checker.proto.header': 'includes/proj.h' };
   state.quickPick = (items) => items[0];
   await e.proto.selectHeader();
-  assert.deepEqual(state.updates, [{ key: 'c42check.proto.header', value: '' }]);
+  assert.deepEqual(state.updates, [{ key: 'c42checker.proto.header', value: '' }]);
   assert.match(state.quickPickItems[1].description ?? '', /現在/, '指定中のヘッダに「現在」が付く');
 
   state.updates = [];

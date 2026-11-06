@@ -1,6 +1,6 @@
 # 既存の拡張機能の利用方針
 
-この拡張機能 (42 Check) は、すでにある信頼できる拡張機能で実現できる機能を**自作せず**、それらをつなぐ「司令塔」に徹する。
+この拡張機能 (c42checker) は、すでにある信頼できる拡張機能で実現できる機能を**自作せず**、それらをつなぐ「司令塔」に徹する。
 
 ## 自作する範囲 / しない範囲
 
@@ -47,7 +47,7 @@
 ### 2. clangd — `llvm-vs-code-extensions.vscode-clangd`
 
 - 役割: clangd (LSP: Language Server Protocol 実装) のクライアント。補完・定義ジャンプ・編集中の診断を提供する。
-- 採用理由: LLVM プロジェクトの公式クライアント。42 Check は `compile_commands.json` と `.clangd` を生成して渡すだけでよい。
+- 採用理由: LLVM プロジェクトの公式クライアント。c42checker は `compile_commands.json` と `.clangd` を生成して渡すだけでよい。
 
 | 基準 | 結果 | 出典 |
 |---|---|---|
@@ -57,7 +57,7 @@
 | インストール数 | **未確認** | — |
 | 不審な挙動 | clangd が PATH に無いとダウンロードを促す (x86-64 Linux / Windows / Mac で自動インストール可)。これ以外の外部通信は確認できていない | [README](https://github.com/clangd/vscode-clangd) |
 
-実機で動作確認できたもの: 実際の clangd 18.1.3 (Ubuntu パッケージ) が、42 Check の生成した `compile_commands.json` と `.clangd` を読み込み、
+実機で動作確認できたもの: 実際の clangd 18.1.3 (Ubuntu パッケージ) が、c42checker の生成した `compile_commands.json` と `.clangd` を読み込み、
 `clangd --check=main.c` が `All checks completed, 0 errors` で完了した (拡張経由ではなくバイナリ単体での確認)。
 
 ## 不採用にした候補
@@ -66,7 +66,7 @@
 |---|---|
 | Microsoft C/C++ (`ms-vscode.cpptools`) | 指示により依存しない。clangd と IntelliSense / 診断が競合する。入っていれば通知のみ行い、設定は書き換えない (`src/ui/envCheck.ts`)。デバッガも gdb / lldb-mi 経由のため、「LLDB 同梱で追加インストール不要」という CodeLLDB の利点が無い |
 | LLDB DAP (DAP: Debug Adapter Protocol) 系の拡張 | 未調査。システムの lldb (`lldb-dap`) が別途必要と考えられ、sudo の無い校舎では導入が難しい。依存先が使えなくなった場合の代替候補として残す (下記) |
-| 他の clang-tidy / clang-format 系の拡張 | 不要。clang-tidy は 42 Check が `clang-tidy-12` を直接実行して合否を判定する。clangd 内蔵の clang-tidy は編集中の参考表示。clang-format は校舎に無い |
+| 他の clang-tidy / clang-format 系の拡張 | 不要。clang-tidy は c42checker が `clang-tidy-12` を直接実行して合否を判定する。clangd 内蔵の clang-tidy は編集中の参考表示。clang-format は校舎に無い |
 
 ## 依存の宣言方法
 
@@ -119,5 +119,5 @@
 |---|---|
 | CodeLLDB が Marketplace から消えた / 保守終了 | (1) 導入済みの `.vsix` を Drive に退避しておき (`~/.vscode/extensions/vadimcn.vscode-lldb-*` を zip、または GitHub releases の `.vsix`)、`code --install-extension <file>.vsix` で再導入する。(2) 代替のデバッガ拡張に切り替える。launch 構成の生成は `src/core/launchConfig.ts` の `buildLaunchConfigs` だけに閉じているので、`type` と必要な項目を差し替え、`extensionDependencies` を更新する。検証 (段階 0〜2) と fail-fast は影響を受けない |
 | CodeLLDB の挙動が変わって launch 構成が通らない | `package.json` の `extensionDependencies` は版を固定できないため、問題の版を避けて旧版の `.vsix` を入れる (VS Code の「特定バージョンのインストール」) |
-| clangd が使えない / 校舎でダウンロードできない | 42 Check の検証 (段階 0〜2) と F5 は clangd に依存しないので、そのまま使える。補完と編集中の診断だけが無くなる。`compile_commands.json` / `.clangd` は生成され続けるので、clangd が使えるようになればそのまま効く |
+| clangd が使えない / 校舎でダウンロードできない | c42checker の検証 (段階 0〜2) と F5 は clangd に依存しないので、そのまま使える。補完と編集中の診断だけが無くなる。`compile_commands.json` / `.clangd` は生成され続けるので、clangd が使えるようになればそのまま効く |
 | 拡張の自動導入に失敗する | README の手順どおり、`code --install-extension vadimcn.vscode-lldb llvm-vs-code-extensions.vscode-clangd` を明示的に実行する |

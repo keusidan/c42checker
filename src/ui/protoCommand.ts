@@ -9,7 +9,7 @@ import type { Outputs } from './output';
 import type { Runner } from './runner';
 
 /** 反映案を載せる読み取り専用の仮想ドキュメントの scheme (無題の新規ドキュメントにすると、保存ダイアログが出てしまう) */
-export const PROPOSAL_SCHEME = 'c42check-proposal';
+export const PROPOSAL_SCHEME = 'c42checker-proposal';
 const CHANNEL = 'プロトタイプ同期';
 const SAVE_DEBOUNCE_MS = 400;
 
@@ -76,18 +76,18 @@ export class ProtoSync implements vscode.Disposable {
   }
 
   /**
-   * コマンド: プロトタイプの反映先のヘッダを選び、ワークスペースの設定 (c42check.proto.header) に保存する。
+   * コマンド: プロトタイプの反映先のヘッダを選び、ワークスペースの設定 (c42checker.proto.header) に保存する。
    * 「自動」を選ぶと設定を空に戻す (マーカーのあるヘッダを自動で選ぶ)。
    */
   async selectHeader(): Promise<void> {
     const ctx = this.makeContext();
     if (!ctx) {
-      void vscode.window.showErrorMessage('42 Check: フォルダを開いてから実行してください。');
+      void vscode.window.showErrorMessage('c42checker: フォルダを開いてから実行してください。');
       return;
     }
     const choices = listHeaderChoices(ctx);
     if (choices.length === 0) {
-      void vscode.window.showErrorMessage('42 Check: ヘッダ (.h) が見つかりません。');
+      void vscode.window.showErrorMessage('c42checker: ヘッダ (.h) が見つかりません。');
       return;
     }
     const items = [
@@ -106,27 +106,27 @@ export class ProtoSync implements vscode.Disposable {
     ];
     const pick = await vscode.window.showQuickPick(items, {
       title: 'プロトタイプを反映するヘッダを選んでください',
-      placeHolder: '選んだヘッダは、設定 c42check.proto.header (ワークスペース) に保存されます',
+      placeHolder: '選んだヘッダは、設定 c42checker.proto.header (ワークスペース) に保存されます',
       matchOnDescription: true,
     });
     if (!pick) return;
     await writeProtoHeader(pick.value);
-    vscode.window.setStatusBarMessage(`42 Check: 反映先のヘッダ: ${pick.value || '自動'}`, 4000);
+    vscode.window.setStatusBarMessage(`c42checker: 反映先のヘッダ: ${pick.value || '自動'}`, 4000);
   }
 
   /** コマンド: 差分をプレビューし、承認を取ってから書き込む。 */
   async runCommand(): Promise<void> {
     const ctx = this.makeContext();
     if (!ctx) {
-      void vscode.window.showErrorMessage('42 Check: フォルダを開いてから実行してください。');
+      void vscode.window.showErrorMessage('c42checker: フォルダを開いてから実行してください。');
       return;
     }
     if (!vscode.workspace.isTrusted) {
-      void vscode.window.showErrorMessage('42 Check: 信頼されていないワークスペースでは実行できません。');
+      void vscode.window.showErrorMessage('c42checker: 信頼されていないワークスペースでは実行できません。');
       return;
     }
     if (this.runner.isRunning) {
-      void vscode.window.showWarningMessage('42 Check: 検証の実行中は、ヘッダを書き換えられません。終わってからもう一度実行してください。');
+      void vscode.window.showWarningMessage('c42checker: 検証の実行中は、ヘッダを書き換えられません。終わってからもう一度実行してください。');
       return;
     }
     const out = this.outputs.get(CHANNEL);
@@ -137,7 +137,7 @@ export class ProtoSync implements vscode.Disposable {
     if (plan.kind === 'choose-header') {
       const pick = await vscode.window.showQuickPick(
         plan.candidates.map((c) => ({ label: rel(c), description: '', abs: c })),
-        { title: 'プロトタイプを反映するヘッダを選んでください', placeHolder: 'View の「反映先のヘッダ」か、設定 c42check.proto.header に指定すると、次回から聞きません' },
+        { title: 'プロトタイプを反映するヘッダを選んでください', placeHolder: 'View の「反映先のヘッダ」か、設定 c42checker.proto.header に指定すると、次回から聞きません' },
       );
       if (!pick) return;
       plan = await planSync(ctx, { header: pick.abs });
@@ -156,7 +156,7 @@ export class ProtoSync implements vscode.Disposable {
       case 'skip': {
         out.appendLine(`skip: ${plan.reason}\n対処案: ${plan.hint ?? '-'}`);
         const pick = await vscode.window.showWarningMessage(
-          `42 Check: プロトタイプの反映を skip しました (${plan.reason})${plan.hint ? `。${plan.hint}` : ''}`,
+          `c42checker: プロトタイプの反映を skip しました (${plan.reason})${plan.hint ? `。${plan.hint}` : ''}`,
           show,
         );
         if (pick === show) out.show(true);
@@ -164,7 +164,7 @@ export class ProtoSync implements vscode.Disposable {
       }
       case 'error': {
         out.appendLine(`エラー: ${plan.reason}\n対処案: ${plan.hint ?? '-'}\n${plan.log ?? ''}`);
-        const pick = await vscode.window.showErrorMessage(`42 Check: ${plan.reason}${plan.hint ? `。${plan.hint}` : ''}`, show);
+        const pick = await vscode.window.showErrorMessage(`c42checker: ${plan.reason}${plan.hint ? `。${plan.hint}` : ''}`, show);
         if (pick === show) out.show(true);
         return;
       }
@@ -176,19 +176,19 @@ export class ProtoSync implements vscode.Disposable {
     }
 
     if (isFileDirty(plan.header)) {
-      void vscode.window.showErrorMessage(`42 Check: ${rel(plan.header)} に未保存の変更があります。保存してからもう一度実行してください。`);
+      void vscode.window.showErrorMessage(`c42checker: ${rel(plan.header)} に未保存の変更があります。保存してからもう一度実行してください。`);
       return;
     }
     out.appendLine(plan.log);
     if (plan.kind === 'ready' && !plan.changed) {
-      vscode.window.setStatusBarMessage(`42 Check: ${rel(plan.header)} のプロトタイプは最新です (${plan.count} 件、変更なし)`, 4000);
+      vscode.window.setStatusBarMessage(`c42checker: ${rel(plan.header)} のプロトタイプは最新です (${plan.count} 件、変更なし)`, 4000);
       return;
     }
     await this.showProposal(ctx, plan, rel);
   }
 
   /**
-   * 反映案を、読み取り専用の仮想ドキュメント (c42check-proposal:) との差分として開く。
+   * 反映案を、読み取り専用の仮想ドキュメント (c42checker-proposal:) との差分として開く。
    * 承認は通知ではなく、差分エディタのタイトルバーのボタン (反映する / キャンセル) で行う。
    * マーカーが無いときは勝手に挿入せず、挿入した形をこの差分で見せる。
    */
@@ -216,10 +216,10 @@ export class ProtoSync implements vscode.Disposable {
     this.updateActiveContext();
   }
 
-  /** 「いま開いているエディタが、反映案の差分か」。タイトルバーのボタンの表示条件 (c42check.proposalActive) に使う。 */
+  /** 「いま開いているエディタが、反映案の差分か」。タイトルバーのボタンの表示条件 (c42checker.proposalActive) に使う。 */
   private updateActiveContext(): void {
     const active = vscode.window.tabGroups.activeTabGroup?.activeTab;
-    void vscode.commands.executeCommand('setContext', 'c42check.proposalActive', !!active && isProposalTab(active));
+    void vscode.commands.executeCommand('setContext', 'c42checker.proposalActive', !!active && isProposalTab(active));
   }
 
   /** 差分エディタの「反映する」ボタン。成功したときは、通知を出さない (差分を閉じ、ヘッダが書き換わる)。 */
@@ -229,16 +229,16 @@ export class ProtoSync implements vscode.Disposable {
     const { ctx, plan } = p;
     const rel = path.relative(ctx.root, plan.header);
     if (this.runner.isRunning) {
-      void vscode.window.showErrorMessage('42 Check: 検証の実行中は、ヘッダを書き換えられません。終わってから、もう一度「反映する」を押してください。');
+      void vscode.window.showErrorMessage('c42checker: 検証の実行中は、ヘッダを書き換えられません。終わってから、もう一度「反映する」を押してください。');
       return;
     }
     if (isFileDirty(plan.header)) {
-      void vscode.window.showErrorMessage(`42 Check: ${rel} に未保存の変更があります。保存してから、もう一度「反映する」を押してください。`);
+      void vscode.window.showErrorMessage(`c42checker: ${rel} に未保存の変更があります。保存してから、もう一度「反映する」を押してください。`);
       return;
     }
     if (fs.readFileSync(plan.header, 'utf8') !== plan.oldText) {
       this.discardProposal();
-      void vscode.window.showErrorMessage(`42 Check: 差分を表示している間に ${rel} が変更されました。もう一度「ヘッダにプロトタイプを反映」を実行してください。`);
+      void vscode.window.showErrorMessage(`c42checker: 差分を表示している間に ${rel} が変更されました。もう一度「ヘッダにプロトタイプを反映」を実行してください。`);
       return;
     }
 
@@ -254,7 +254,7 @@ export class ProtoSync implements vscode.Disposable {
     const undo = '元に戻す';
     const show = 'ログを表示';
     const choice = await vscode.window.showWarningMessage(
-      `42 Check: ${rel} に反映しましたが、norminette が ${norm.diags.length || '複数の'} 件を指摘しています。`,
+      `c42checker: ${rel} に反映しましたが、norminette が ${norm.diags.length || '複数の'} 件を指摘しています。`,
       undo,
       show,
     );
@@ -282,7 +282,7 @@ export class ProtoSync implements vscode.Disposable {
         if (isProposalTab(tab) && tab.input.modified.toString() === p.uri.toString()) void vscode.window.tabGroups.close(tab);
       }
     }
-    void vscode.commands.executeCommand('setContext', 'c42check.proposalActive', false);
+    void vscode.commands.executeCommand('setContext', 'c42checker.proposalActive', false);
   }
 
   /** 保存時の同期。差分プレビューは出さない (保存のたびに承認を求めると使えないため)。マーカーがあるときだけ書き換える。 */
@@ -313,18 +313,18 @@ export class ProtoSync implements vscode.Disposable {
       case 'updated':
         this.lastError = '';
         if (r.norm) this.problems.add(r.norm.diags);
-        if (r.norm?.status === 'fail') void vscode.window.showWarningMessage(`42 Check: ${r.message}`, 'ログを表示').then((p) => p && out.show(true));
-        else vscode.window.setStatusBarMessage(`$(sync) 42 Check: プロトタイプを同期しました (${r.count} 件)`, 4000);
+        if (r.norm?.status === 'fail') void vscode.window.showWarningMessage(`c42checker: ${r.message}`, 'ログを表示').then((p) => p && out.show(true));
+        else vscode.window.setStatusBarMessage(`$(sync) c42checker: プロトタイプを同期しました (${r.count} 件)`, 4000);
         break;
       case 'error':
         // 同じエラーを保存のたびに出し続けない
         if (r.message !== this.lastError) {
           this.lastError = r.message;
-          void vscode.window.showErrorMessage(`42 Check: ${r.message}${r.hint ? `。${r.hint}` : ''}`, 'ログを表示').then((p) => p && out.show(true));
+          void vscode.window.showErrorMessage(`c42checker: ${r.message}${r.hint ? `。${r.hint}` : ''}`, 'ログを表示').then((p) => p && out.show(true));
         }
         break;
       default:
-        vscode.window.setStatusBarMessage(`42 Check: プロトタイプ同期を飛ばしました (${r.message})`, 6000);
+        vscode.window.setStatusBarMessage(`c42checker: プロトタイプ同期を飛ばしました (${r.message})`, 6000);
     }
   }
 

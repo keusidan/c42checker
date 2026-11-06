@@ -1,5 +1,5 @@
 /**
- * 使っていない #include の削除 (設定 c42check.normExtra.removeUnusedIncludes)。
+ * 使っていない #include の削除 (設定 c42checker.normExtra.removeUnusedIncludes)。
  * 削除するのは、コンパイラで「外しても診断が増えない」と確かめた include (includecheck.ts の error) だけ。
  * 元の内容は .42check/include-backup/ に退避する。
  */

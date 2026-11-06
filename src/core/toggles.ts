@@ -1,11 +1,11 @@
 /**
- * View の「設定」グループのチェックボックスと、settings.json の対応キー (c42check.<key>) の対応表。
+ * View の「設定」グループのチェックボックスと、settings.json の対応キー (c42checker.<key>) の対応表。
  * 真偽値でない設定 (failFast は "stage" | "step") も、チェック状態との相互変換をここで持つ。
  */
 export interface ToggleDef {
   id: string;
   label: string;
-  /** `c42check.` を除いた設定キー */
+  /** `c42checker.` を除いた設定キー */
   key: string;
   description: string;
   /** 設定が未指定のときのチェック状態 */

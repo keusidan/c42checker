@@ -15,7 +15,7 @@ export function workspaceRoot(): string | undefined {
 }
 
 function cfg(): vscode.WorkspaceConfiguration {
-  return vscode.workspace.getConfiguration('c42check');
+  return vscode.workspace.getConfiguration('c42checker');
 }
 
 /** 文字列の配列として読む。型が違う (設定の書き間違い) ときは既定値に戻す。 */

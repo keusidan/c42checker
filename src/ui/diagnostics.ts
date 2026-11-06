@@ -3,7 +3,7 @@ import type { Diag } from '../core/types';
 
 /** Problems パネルへの出力。実行のたびに丸ごと入れ替える。 */
 export class Problems implements vscode.Disposable {
-  private collection = vscode.languages.createDiagnosticCollection('c42check');
+  private collection = vscode.languages.createDiagnosticCollection('c42checker');
   private byFile = new Map<string, vscode.Diagnostic[]>();
 
   clear(): void {
@@ -24,7 +24,7 @@ export class Problems implements vscode.Disposable {
             ? vscode.DiagnosticSeverity.Warning
             : vscode.DiagnosticSeverity.Information,
       );
-      diag.source = `42check:${d.source}`;
+      diag.source = `c42checker:${d.source}`;
       const list = this.byFile.get(d.file) ?? [];
       list.push(diag);
       this.byFile.set(d.file, list);

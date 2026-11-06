@@ -25,7 +25,7 @@ test('c_formatter_42 は既定 OFF (ソースを書き換えるため)、段階 
   const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')) as {
     contributes: { configuration: { properties: Record<string, { default: Record<string, boolean> }> } };
   };
-  assert.equal(pkg.contributes.configuration.properties['c42check.checks'].default.cFormatter, false);
+  assert.equal(pkg.contributes.configuration.properties['c42checker.checks'].default.cFormatter, false);
 });
 
 test('チェックされていなければ、ファイルは 1 バイトも書き換えない', async () => {

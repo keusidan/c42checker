@@ -74,7 +74,7 @@ export interface Settings {
   protoSkipExisting: boolean;
   /** マーカーの外の手書きの宣言も、ソースの型 (戻り値・引数の型) に合わせて書き換える */
   protoUpdateExisting: boolean;
-  /** コンパイル引数 (VS Code の settings.json の c42check.compile.* / clangTidy.* / valgrind.*) */
+  /** コンパイル引数 (VS Code の settings.json の c42checker.compile.* / clangTidy.* / valgrind.*) */
   /** true なら、norminette の関数の引数についての指摘 (TOO_MANY_ARGS など) を結果から除く */
   norminetteIgnoreParameterErrors: boolean;
   /** norminette と c_formatter_42 の対象から外すファイル (パターン)。既定: main.c */

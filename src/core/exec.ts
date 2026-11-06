@@ -40,7 +40,7 @@ export function exec(cmd: string, args: string[], opts: ExecOptions): Promise<Ex
       settled = true;
       clearTimeout(timer);
       opts.signal?.removeEventListener('abort', onAbort);
-      if (truncated) output += '\n[c42check] 出力が上限を超えたため以降を省略しました\n';
+      if (truncated) output += '\n[c42checker] 出力が上限を超えたため以降を省略しました\n';
       resolve({ ...r, output, timedOut, aborted });
     };
 

@@ -395,16 +395,16 @@ test('規則の一覧: id が重複せず、package.json の enum と同じ。No
     contributes: { configuration: { properties: Record<string, { default: unknown; items?: { enum?: string[] } }> } };
   };
   const props = pkg.contributes.configuration.properties;
-  assert.deepEqual([...(props['c42check.normExtra.disable'].items?.enum ?? [])].sort(), [...ids].sort());
-  assert.deepEqual(props['c42check.normExtra.disable'].default, DEFAULT_SETTINGS.normExtraDisable);
-  assert.equal(props['c42check.normExtra.reviewAsFail'].default, DEFAULT_SETTINGS.normExtraReviewAsFail);
-  assert.deepEqual(props['c42check.normExtra.shortNames'].default, DEFAULT_SETTINGS.normExtraShortNames);
+  assert.deepEqual([...(props['c42checker.normExtra.disable'].items?.enum ?? [])].sort(), [...ids].sort());
+  assert.deepEqual(props['c42checker.normExtra.disable'].default, DEFAULT_SETTINGS.normExtraDisable);
+  assert.equal(props['c42checker.normExtra.reviewAsFail'].default, DEFAULT_SETTINGS.normExtraReviewAsFail);
+  assert.deepEqual(props['c42checker.normExtra.shortNames'].default, DEFAULT_SETTINGS.normExtraShortNames);
   assert.ok(MANUAL_ITEMS.length >= 5, '機械では判定できない項目をチェックリストとして持つ');
   assert.ok(STEP_IDS.includes('normExtra') && STEP_IDS.includes('makefile'));
   assert.equal(DEFAULT_CHECKS.normExtra, true);
   assert.equal(DEFAULT_CHECKS.makefile, true);
   assert.deepEqual(
-    Object.entries(props['c42check.checks'].default as Record<string, boolean>).sort(),
+    Object.entries(props['c42checker.checks'].default as Record<string, boolean>).sort(),
     Object.entries(DEFAULT_CHECKS).sort(),
     'package.json の checks の既定値が DEFAULT_CHECKS と一致',
   );
@@ -520,7 +520,7 @@ test('設定 normExtra.checkParameterNames: 既定 true (DEFAULT_SETTINGS と pa
   const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')) as {
     contributes: { configuration: { properties: Record<string, { type: string; default: unknown }> } };
   };
-  const prop = pkg.contributes.configuration.properties['c42check.normExtra.checkParameterNames'];
+  const prop = pkg.contributes.configuration.properties['c42checker.normExtra.checkParameterNames'];
   assert.equal(prop.type, 'boolean');
   assert.equal(prop.default, true);
 

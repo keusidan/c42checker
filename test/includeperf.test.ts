@@ -225,9 +225,9 @@ test('二重指定: step に反映される (error なら fail、Problems の診
     contributes: { configuration: { properties: Record<string, { type: string; default: unknown; items?: { enum?: string[] } }> } };
   };
   const props = pkg.contributes.configuration.properties;
-  assert.equal(props['c42check.normExtra.detectDuplicateIncludes'].default, false);
+  assert.equal(props['c42checker.normExtra.detectDuplicateIncludes'].default, false);
   assert.equal(DEFAULT_SETTINGS.normExtraDetectDuplicateIncludes, false);
-  assert.ok(props['c42check.normExtra.disable'].items!.enum!.includes('duplicate-include'));
+  assert.ok(props['c42checker.normExtra.disable'].items!.enum!.includes('duplicate-include'));
 });
 
 test('ヘッダの include を確かめるとき、先頭の単位 (そのヘッダだけを include する .c) で「必要」と分かれば、include 元の .c はコンパイルしない', async (t) => {

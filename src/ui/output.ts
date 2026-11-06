@@ -7,7 +7,7 @@ export class Outputs implements vscode.Disposable {
   get(name: string): vscode.OutputChannel {
     let ch = this.channels.get(name);
     if (!ch) {
-      ch = vscode.window.createOutputChannel(name === 'main' ? '42 Check' : `42 Check: ${name}`);
+      ch = vscode.window.createOutputChannel(name === 'main' ? 'c42checker' : `c42checker: ${name}`);
       this.channels.set(name, ch);
     }
     return ch;

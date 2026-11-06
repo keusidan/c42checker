@@ -34,7 +34,7 @@ export async function prepare(ctx: Context): Promise<StepOutcome> {
       diags: [],
       log,
       reason: `空き容量が ${free}MB で、閾値 ${ctx.settings.minFreeSpaceMB}MB を下回っています`,
-      hint: '`df -h ~` で確認し、不要なファイルを消すか、設定 `c42check.minFreeSpaceMB` を見直してください',
+      hint: '`df -h ~` で確認し、不要なファイルを消すか、設定 `c42checker.minFreeSpaceMB` を見直してください',
     };
   }
 
@@ -51,7 +51,7 @@ export async function prepare(ctx: Context): Promise<StepOutcome> {
       diags: [],
       log: log + `${ctx.targetRoot} に .c ファイルがありません\n`,
       reason: '対象の .c ファイルがありません',
-      hint: '設定 `c42check.targetDir` を確認してください',
+      hint: '設定 `c42checker.targetDir` を確認してください',
     };
   }
   // 実行時のプロトタイプ同期 (既定 OFF)。結果が空 / ctags の失敗は、ヘッダに触らずエラーとして止める
@@ -78,7 +78,7 @@ export async function prepare(ctx: Context): Promise<StepOutcome> {
   );
   if (inputs.note) say(`注意: ${inputs.note}`);
   if (ctx.settings.mainFile && !ctx.mainFile) {
-    say(`警告: c42check.mainFile (${ctx.settings.mainFile}) が見つかりません`);
+    say(`警告: c42checker.mainFile (${ctx.settings.mainFile}) が見つかりません`);
   }
   say(
     'ツール: ' +
@@ -102,7 +102,7 @@ export async function prepare(ctx: Context): Promise<StepOutcome> {
         say('compile_commands.json: 生成済みで、対象のファイルや設定に変更がないため、そのままにしました');
         break;
       case 'foreign':
-        say('compile_commands.json: 既にあるファイル (42 Check が作った記録がない) を上書きしませんでした。42 Check で作り直すには、コマンド「42 Check: compile_commands.json を再生成」を実行してください');
+        say('compile_commands.json: 既にあるファイル (c42checker が作った記録がない) を上書きしませんでした。c42checker で作り直すには、コマンド「c42checker: compile_commands.json を再生成」を実行してください');
         break;
     }
     say(g.clangd.action === 'generated' ? '.clangd を生成しました' : g.clangd.reason ? `.clangd: ${g.clangd.reason}` : '.clangd: 既にあるため、そのままにしました');

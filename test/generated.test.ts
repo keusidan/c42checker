@@ -105,20 +105,20 @@ test('消した / 無いときは作る (compile_commands.json も .clangd も�
   cleanup();
 });
 
-test('自分で用意した compile_commands.json (生成の記録がない) は上書きしない。.clangd は、あれば (42 Check 製でも) 書き直さない', async () => {
+test('自分で用意した compile_commands.json (生成の記録がない) は上書きしない。.clangd は、あれば (c42checker 製でも) 書き直さない', async () => {
   const { ctx, dir, cleanup } = sampleContext('ok');
   fs.writeFileSync(path.join(dir, 'compile_commands.json'), '[]\n');
   fs.writeFileSync(path.join(dir, '.clangd'), `${CLANGD_MARKER} — edited by hand\nCompileFlags:\n  Add: [-DMINE]\n`);
   const log = await prepareLog(ctx);
-  assert.match(log, /既にあるファイル \(42 Check が作った記録がない\) を上書きしませんでした/);
-  assert.match(log, /「42 Check: compile_commands\.json を再生成」/);
+  assert.match(log, /既にあるファイル \(c42checker が作った記録がない\) を上書きしませんでした/);
+  assert.match(log, /「c42checker: compile_commands\.json を再生成」/);
   assert.equal(read(dir, 'compile_commands.json'), '[]\n');
-  assert.match(read(dir, '.clangd'), /-DMINE/, '42 Check 製の印があっても、手で直したものを実行のたびに戻さない');
+  assert.match(read(dir, '.clangd'), /-DMINE/, 'c42checker 製の印があっても、手で直したものを実行のたびに戻さない');
   assert.ok(!fs.existsSync(path.join(dir, STATE)), '作っていないので記録も作らない');
   cleanup();
 });
 
-test('再生成コマンド (force): compile_commands.json は必ず書き直す。.clangd は 42 Check 製だけ書き直し、他人のものは残す', async () => {
+test('再生成コマンド (force): compile_commands.json は必ず書き直す。.clangd は c42checker 製だけ書き直し、他人のものは残す', async () => {
   const { ctx, dir, cleanup } = sampleContext('ok');
   fs.writeFileSync(path.join(dir, 'compile_commands.json'), '[]\n');
   fs.writeFileSync(path.join(dir, '.clangd'), 'CompileFlags:\n  Add: [-DMINE]\n');
@@ -128,7 +128,7 @@ test('再生成コマンド (force): compile_commands.json は必ず書き直す
   assert.ok(JSON.parse(read(dir, 'compile_commands.json')).length > 0);
   assert.equal(g.clangd.action, 'foreign');
   assert.match(read(dir, '.clangd'), /-DMINE/);
-  assert.ok(fs.existsSync(path.join(dir, STATE)), '以降は 42 Check が作ったものとして、必要なときだけ更新する');
+  assert.ok(fs.existsSync(path.join(dir, STATE)), '以降は c42checker が作ったものとして、必要なときだけ更新する');
   assert.match(await prepareLog(ctx), /compile_commands\.json: 生成済みで/);
 
   fs.writeFileSync(path.join(dir, '.clangd'), `${CLANGD_MARKER}\nold\n`);

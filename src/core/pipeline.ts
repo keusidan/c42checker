@@ -123,7 +123,7 @@ export async function runPipeline(ctx: Context, req: PipelineRequest, hooks: Pip
         diags: [],
         log: `.42check/ が ${Math.ceil(size / MB)}MB で、上限 ${ctx.settings.workDirMaxMB}MB を超えました\n`,
         reason: `.42check/ が上限 ${ctx.settings.workDirMaxMB}MB を超えました (${Math.ceil(size / MB)}MB)`,
-        hint: '設定 `c42check.workDirMaxMB` を見直すか、巨大なビルド成果物が出ていないか確認してください',
+        hint: '設定 `c42checker.workDirMaxMB` を見直すか、巨大なビルド成果物が出ていないか確認してください',
       },
       0,
     );

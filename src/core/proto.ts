@@ -321,7 +321,7 @@ export type SyncPlan =
       count: number;
       /** マーカーの外で既に宣言されているため、ブロックに入れなかった件数 */
       skippedExisting: number;
-      /** マーカーの外の手書きの宣言のうち、ソースの型に合わせて書き換える案 (c42check.proto.updateExisting) */
+      /** マーカーの外の手書きの宣言のうち、ソースの型に合わせて書き換える案 (c42checker.proto.updateExisting) */
       updatedExisting: DeclEdit[];
       excluded: number;
       tooLong: string[];
@@ -354,11 +354,11 @@ export function protoSourceRoot(ctx: Context): string {
 
 export interface HeaderChoice {
   abs: string;
-  /** ワークスペースルートからの相対パス (c42check.proto.header に書く値) */
+  /** ワークスペースルートからの相対パス (c42checker.proto.header に書く値) */
   rel: string;
   /** auto prototypes のマーカーがある */
   hasMarkers: boolean;
-  /** 現在 c42check.proto.header に指定されている */
+  /** 現在 c42checker.proto.header に指定されている */
   current: boolean;
 }
 
@@ -380,11 +380,11 @@ function resolveHeader(ctx: Context, sourceRoot: string, opts: PlanOptions): { h
   if (opts.header) return { header: opts.header };
   if (ctx.settings.protoHeader) {
     const abs = path.resolve(ctx.root, ctx.settings.protoHeader);
-    return fs.existsSync(abs) ? { header: abs } : { error: `設定 c42check.proto.header のヘッダが見つかりません: ${ctx.settings.protoHeader}` };
+    return fs.existsSync(abs) ? { header: abs } : { error: `設定 c42checker.proto.header のヘッダが見つかりません: ${ctx.settings.protoHeader}` };
   }
   const all = [...new Set([...ctx.headers, ...scanSources(sourceRoot).headers])];
   if (all.length === 0) {
-    return { error: '対象のヘッダ (.h) が見つかりません。設定 c42check.proto.header に指定してください' };
+    return { error: '対象のヘッダ (.h) が見つかりません。設定 c42checker.proto.header に指定してください' };
   }
   const marked = all.filter((h) => fs.readFileSync(h, 'utf8').includes(MARKER_BEGIN));
   if (marked.length === 1) return { header: marked[0] };
@@ -403,19 +403,19 @@ export async function planSync(ctx: Context, opts: PlanOptions = {}): Promise<Sy
 
   const sourceRoot = protoSourceRoot(ctx);
   if (!fs.existsSync(sourceRoot)) {
-    return { kind: 'error', reason: `プロトタイプ抽出の対象ディレクトリがありません: ${sourceRoot}`, hint: '設定 `c42check.proto.sourceDir` を確認してください' };
+    return { kind: 'error', reason: `プロトタイプ抽出の対象ディレクトリがありません: ${sourceRoot}`, hint: '設定 `c42checker.proto.sourceDir` を確認してください' };
   }
-  // main.c など (c42check.normExclude と同じ指定) のテスト用関数は、ヘッダに載せない
+  // main.c など (c42checker.normExclude と同じ指定) のテスト用関数は、ヘッダに載せない
   const all = scanSources(sourceRoot).sources.filter((f) => f !== ctx.mainFile);
   const files = all.filter((f) => !isExcluded(f, ctx.root, ctx.settings.normExclude));
   if (files.length === 0) {
     return all.length > 0
       ? {
           kind: 'error',
-          reason: `対象の .c ファイルが全て c42check.normExclude で除外されています (${all.length} 件)`,
-          hint: '設定 `c42check.normExclude` を確認してください',
+          reason: `対象の .c ファイルが全て c42checker.normExclude で除外されています (${all.length} 件)`,
+          hint: '設定 `c42checker.normExclude` を確認してください',
         }
-      : { kind: 'error', reason: `${sourceRoot} に .c ファイルがありません`, hint: '設定 `c42check.proto.sourceDir` を確認してください' };
+      : { kind: 'error', reason: `${sourceRoot} に .c ファイルがありません`, hint: '設定 `c42checker.proto.sourceDir` を確認してください' };
   }
 
   const h = resolveHeader(ctx, sourceRoot, opts);
@@ -442,7 +442,7 @@ export async function planSync(ctx: Context, opts: PlanOptions = {}): Promise<Sy
     return {
       kind: 'error',
       reason: `ctags の結果が空です (関数定義 ${run.funcs.length} 件、うち static / main で除外 ${built.excluded} 件)。ヘッダには触っていません`,
-      hint: '対象ディレクトリ (`c42check.proto.sourceDir`) が正しいか、除外されない関数が 1 つ以上あるかを確認してください',
+      hint: '対象ディレクトリ (`c42checker.proto.sourceDir`) が正しいか、除外されない関数が 1 つ以上あるかを確認してください',
       log: run.log,
     };
   }
@@ -549,7 +549,7 @@ export async function syncAuto(ctx: Context, opts: PlanOptions = {}): Promise<Au
       return {
         status: 'skip',
         message: `対象のヘッダを特定できません (候補 ${plan.candidates.length} 件)`,
-        hint: '設定 `c42check.proto.header` にヘッダを指定してください',
+        hint: '設定 `c42checker.proto.header` にヘッダを指定してください',
         log: '',
       };
     case 'needs-markers':

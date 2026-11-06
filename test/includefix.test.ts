@@ -1,4 +1,4 @@
-// 設定 c42check.normExtra.removeUnusedIncludes: コンパイラで未使用と確かめた #include を、ファイルから削除する。
+// 設定 c42checker.normExtra.removeUnusedIncludes: コンパイラで未使用と確かめた #include を、ファイルから削除する。
 import * as assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
@@ -186,7 +186,7 @@ test('設定と toggle: package.json と一致し、「設定」グループに�
   const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')) as {
     contributes: { configuration: { properties: Record<string, { type: string; default: unknown }> } };
   };
-  const prop = pkg.contributes.configuration.properties['c42check.normExtra.removeUnusedIncludes'];
+  const prop = pkg.contributes.configuration.properties['c42checker.normExtra.removeUnusedIncludes'];
   assert.equal(prop.type, 'boolean');
   assert.equal(prop.default, false, '既定は OFF (ソースを書き換えるため)');
 });

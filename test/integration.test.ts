@@ -191,7 +191,7 @@ test('既定では TSan / MSan は OFF (チェックを入れたときだけ実�
   const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')) as {
     contributes: { configuration: { properties: Record<string, { default: Record<string, boolean> }> } };
   };
-  const d = pkg.contributes.configuration.properties['c42check.checks'].default;
+  const d = pkg.contributes.configuration.properties['c42checker.checks'].default;
   assert.deepEqual([d.tsan, d.msan, d.asanUbsan], [false, false, true]);
 });
 

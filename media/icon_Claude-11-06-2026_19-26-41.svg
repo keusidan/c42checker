@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-label="c42checker">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2b3445"/>
+      <stop offset="1" stop-color="#161b26"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="52" fill="url(#bg)"/>
+  <g fill="none" stroke="#f4f6fa" stroke-width="20" stroke-linecap="round" stroke-linejoin="round">
+    <!-- 4 -->
+    <path d="M92 46 L40 128 H118"/>
+    <path d="M92 46 V166"/>
+    <!-- 2 -->
+    <path d="M148 80 C148 44 214 44 214 82 C214 112 152 130 148 166 H216"/>
+  </g>
+  <!-- チェックのバッジ -->
+  <circle cx="186" cy="196" r="40" fill="#2ecc71" stroke="#161b26" stroke-width="8"/>
+  <path d="M166 197 L181 212 L208 181" fill="none" stroke="#ffffff" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

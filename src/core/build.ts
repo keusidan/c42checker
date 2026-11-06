@@ -12,7 +12,7 @@ export function buildInputs(ctx: Context): { files: string[]; usable: boolean; n
     return {
       files: ctx.sources,
       usable: true,
-      note: ctx.mainFile ? 'ソースに main があるため c42check.mainFile は使いません' : undefined,
+      note: ctx.mainFile ? 'ソースに main があるため c42checker.mainFile は使いません' : undefined,
     };
   }
   if (ctx.mainFile) return { files: [...ctx.sources, ctx.mainFile], usable: true };
@@ -21,7 +21,7 @@ export function buildInputs(ctx: Context): { files: string[]; usable: boolean; n
 
 export const NO_MAIN_REASON = '対象ソースに main がありません';
 export const NO_MAIN_HINT =
-  'ライブラリ課題 (libft 等) は、テスト用の main (.c) を作り、設定 `c42check.mainFile` にそのパスを指定してください';
+  'ライブラリ課題 (libft 等) は、テスト用の main (.c) を作り、設定 `c42checker.mainFile` にそのパスを指定してください';
 
 export interface BuildResult {
   ok: boolean;

@@ -16,7 +16,7 @@ const state = (vscode as unknown as { state: { folders: unknown[]; config: Recor
 function setup(sample: string, remove: string[] = []) {
   const { dir, cleanup } = sampleContext(sample, {}, remove);
   state.folders = [{ uri: { fsPath: dir } }];
-  state.config = { 'c42check.runTimeoutSec': 10, 'c42check.normExclude': [] }; // 既定 (main.c を除外) だと norm-ng の違反が消えるため
+  state.config = { 'c42checker.runTimeoutSec': 10, 'c42checker.normExclude': [] }; // 既定 (main.c を除外) だと norm-ng の違反が消えるため
   state.messages = [];
   const outputs = new Outputs();
   const problems = new Problems();
@@ -27,7 +27,7 @@ function setup(sample: string, remove: string[] = []) {
 /** task の CustomExecution を実行して、Pseudoterminal が通知する終了コードを受け取る。 */
 async function runTask(runner: Runner, mode: string): Promise<{ code: number | void; output: string }> {
   const provider = new CheckTaskProvider(runner);
-  const task = provider.resolveTask({ definition: { type: 'c42check', mode }, name: `c42check: ${mode}` } as unknown as vscode.Task)!;
+  const task = provider.resolveTask({ definition: { type: 'c42checker', mode }, name: `c42checker: ${mode}` } as unknown as vscode.Task)!;
   const pty = await (task.execution as unknown as { callback: () => Promise<vscode.Pseudoterminal> }).callback();
   let output = '';
   pty.onDidWrite?.((t) => (output += t));
@@ -109,7 +109,7 @@ test('単一実行: チェックを外している項目 (TSan) も実行でき�
 test('不明な mode の task は解決しない', () => {
   const { runner, cleanup } = setup('ok');
   const p = new CheckTaskProvider(runner);
-  assert.equal(p.resolveTask({ definition: { type: 'c42check', mode: 'nope' }, name: 'x' } as unknown as vscode.Task), undefined);
+  assert.equal(p.resolveTask({ definition: { type: 'c42checker', mode: 'nope' }, name: 'x' } as unknown as vscode.Task), undefined);
   assert.equal(p.provideTasks().length, 3);
   cleanup();
 });

@@ -1,4 +1,4 @@
-/* ライブラリ課題用のテスト main。c42check.mainFile で指定する (norminette の対象外) */
+/* ライブラリ課題用のテスト main。c42checker.mainFile で指定する (norminette の対象外) */
 #include <stdio.h>
 #include <stdlib.h>
 #include "../libft.h"

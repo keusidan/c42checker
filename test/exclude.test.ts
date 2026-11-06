@@ -1,4 +1,4 @@
-// c42check.normExclude: norminette と c_formatter_42 の対象から外すファイル (既定: main.c)。
+// c42checker.normExclude: norminette と c_formatter_42 の対象から外すファイル (既定: main.c)。
 import * as assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -37,15 +37,15 @@ test('既定は main.c (DEFAULT_SETTINGS と package.json が一致)。VS Code �
   const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')) as {
     contributes: { configuration: { properties: Record<string, { default: unknown }> } };
   };
-  assert.deepEqual(pkg.contributes.configuration.properties['c42check.normExclude'].default, ['main.c']);
+  assert.deepEqual(pkg.contributes.configuration.properties['c42checker.normExclude'].default, ['main.c']);
   const state = (vscode as unknown as { state: { config: Record<string, unknown> } }).state;
   state.config = {};
   assert.deepEqual(readSettings().normExclude, ['main.c']);
-  state.config = { 'c42check.normExclude': ['main.c', 'tests/'] };
+  state.config = { 'c42checker.normExclude': ['main.c', 'tests/'] };
   assert.deepEqual(readSettings().normExclude, ['main.c', 'tests/']);
-  state.config = { 'c42check.normExclude': 'main.c' };
+  state.config = { 'c42checker.normExclude': 'main.c' };
   assert.deepEqual(readSettings().normExclude, ['main.c'], '文字列 (配列でない) は既定に戻る');
-  state.config = { 'c42check.normExclude': [] };
+  state.config = { 'c42checker.normExclude': [] };
   assert.deepEqual(readSettings().normExclude, [], '空にすれば除外しない');
   state.config = {};
 });
@@ -135,7 +135,7 @@ test('対象が全て除外されたら、norminette も c_formatter_42 も skip
     const s = get(r2, id)!;
     assert.equal(s.status, 'skip', id);
     assert.match(s.reason ?? '', /normExclude で除外/);
-    assert.match(s.hint ?? '', /c42check\.normExclude/);
+    assert.match(s.hint ?? '', /c42checker\.normExclude/);
   }
   assert.equal(read(dir, 'main.c'), before);
   cleanup();

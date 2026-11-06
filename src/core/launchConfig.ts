@@ -1,7 +1,7 @@
 import { parseJsonc } from './jsonc';
 
-export const PRE_DEBUG_LABEL = 'c42check: pre-debug';
-export const BUILD_DEBUG_LABEL = 'c42check: build-debug';
+export const PRE_DEBUG_LABEL = 'c42checker: pre-debug';
+export const BUILD_DEBUG_LABEL = 'c42checker: build-debug';
 export const DEBUG_PROGRAM = '${workspaceFolder}/.42check/debug/prog';
 
 export interface LaunchOptions {
@@ -17,13 +17,13 @@ export function buildLaunchConfigs(o: LaunchOptions): Json[] {
     type: 'lldb',
     request: 'launch',
     program: DEBUG_PROGRAM,
-    // CodeLLDB は args が文字列なら shell 風に分割する。設定 c42check.runArgs を返すコマンドで差し込む。
-    args: '${command:c42check.runArgs}',
+    // CodeLLDB は args が文字列なら shell 風に分割する。設定 c42checker.runArgs を返すコマンドで差し込む。
+    args: '${command:c42checker.runArgs}',
     cwd: o.cwd,
     terminal: o.terminal,
   };
   return [
-    { name: 'Debug (42 Check: 事前チェック → LLDB)', ...base, preLaunchTask: PRE_DEBUG_LABEL },
+    { name: 'Debug (c42checker: 事前チェック → LLDB)', ...base, preLaunchTask: PRE_DEBUG_LABEL },
     { name: 'Debug (skip checks) ※事前チェックを飛ばす', ...base, preLaunchTask: BUILD_DEBUG_LABEL },
   ];
 }
@@ -31,7 +31,7 @@ export function buildLaunchConfigs(o: LaunchOptions): Json[] {
 export function buildTasks(): Json[] {
   const mk = (label: string, mode: string): Json => ({
     label,
-    type: 'c42check',
+    type: 'c42checker',
     mode,
     problemMatcher: [],
     presentation: { reveal: 'always', clear: true },
@@ -86,17 +86,17 @@ export function mergeJsonFile(
   return { added, kept, merged: JSON.stringify(doc, null, 2) + '\n' };
 }
 
-/** launch.json の本文から、42 Check の構成が使われているか。 */
-export function usesC42check(launchText: string): boolean {
+/** launch.json の本文から、c42checker の構成が使われているか (改名前の `c42check:` で生成したものも含む)。 */
+export function usesC42checker(launchText: string): boolean {
   try {
     const doc = parseJsonc(launchText) as { configurations?: Json[] };
-    return (doc.configurations ?? []).some((c) => String(c.preLaunchTask ?? '').startsWith('c42check:'));
+    return (doc.configurations ?? []).some((c) => /^c42checker?:/.test(String(c.preLaunchTask ?? '')));
   } catch {
     return false;
   }
 }
 
-/** c42check.runArgs を、CodeLLDB が shell 風に分割できる 1 つの文字列にする。 */
+/** c42checker.runArgs を、CodeLLDB が shell 風に分割できる 1 つの文字列にする。 */
 export function shellQuoteArgs(args: string[]): string {
   return args.map((a) => `'${a.replace(/'/g, `'\\''`)}'`).join(' ');
 }

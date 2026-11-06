@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import { buildLaunchConfigs, buildTasks, mergeJsonFile, usesC42check, type MergeResult } from '../core/launchConfig';
+import { buildLaunchConfigs, buildTasks, mergeJsonFile, usesC42checker, type MergeResult } from '../core/launchConfig';
 import { debugLaunchOptions, workspaceRoot } from './config';
 
 interface Target {
@@ -18,7 +18,7 @@ interface Target {
 export async function generateDebugConfig(): Promise<void> {
   const root = workspaceRoot();
   if (!root) {
-    void vscode.window.showErrorMessage('42 Check: フォルダを開いてから実行してください。');
+    void vscode.window.showErrorMessage('c42checker: フォルダを開いてから実行してください。');
     return;
   }
   const dir = path.join(root, '.vscode');
@@ -39,7 +39,7 @@ export async function generateDebugConfig(): Promise<void> {
     try {
       merge = mergeJsonFile(existing, t.listKey, t.idKey, t.desired, t.listKey === 'tasks' ? '2.0.0' : '0.2.0');
     } catch (e) {
-      void vscode.window.showErrorMessage(`42 Check: ${path.basename(t.file)} を解析できませんでした (${String(e)})。手動で修正してから再実行してください。`);
+      void vscode.window.showErrorMessage(`c42checker: ${path.basename(t.file)} を解析できませんでした (${String(e)})。手動で修正してから再実行してください。`);
       continue;
     }
     if (merge.merged === null) continue;
@@ -70,7 +70,7 @@ export async function generateDebugConfig(): Promise<void> {
   }
 
   void vscode.window.showInformationMessage(
-    changed > 0 ? '42 Check: launch.json / tasks.json を更新しました。F5 で事前チェック付きのデバッグを開始できます。' : '42 Check: launch.json / tasks.json は最新です (変更なし)。',
+    changed > 0 ? 'c42checker: launch.json / tasks.json を更新しました。F5 で事前チェック付きのデバッグを開始できます。' : 'c42checker: launch.json / tasks.json は最新です (変更なし)。',
   );
   await proposeAbortOnTaskErrors(false);
 }
@@ -80,7 +80,7 @@ export async function proposeAbortOnTaskErrors(force: boolean): Promise<void> {
   const debugCfg = vscode.workspace.getConfiguration('debug');
   const current = debugCfg.get<string>('onTaskErrors');
   if (current === 'abort') {
-    if (force) void vscode.window.showInformationMessage('42 Check: debug.onTaskErrors はすでに abort です。');
+    if (force) void vscode.window.showInformationMessage('c42checker: debug.onTaskErrors はすでに abort です。');
     return;
   }
   const pick = await vscode.window.showWarningMessage(
@@ -90,20 +90,20 @@ export async function proposeAbortOnTaskErrors(force: boolean): Promise<void> {
   );
   if (pick === 'abort にする') {
     await debugCfg.update('onTaskErrors', 'abort', vscode.ConfigurationTarget.Workspace);
-    void vscode.window.showInformationMessage('42 Check: debug.onTaskErrors を abort にしました (ワークスペース設定)。');
+    void vscode.window.showInformationMessage('c42checker: debug.onTaskErrors を abort にしました (ワークスペース設定)。');
   }
 }
 
-/** launch.json が 42 Check の構成を使っているのに abort でなければ、一度だけ提案する。 */
+/** launch.json が c42checker の構成を使っているのに abort でなければ、一度だけ提案する。 */
 export async function suggestAbortIfNeeded(state: vscode.Memento): Promise<void> {
   const root = workspaceRoot();
-  if (!root || state.get<boolean>('c42check.abortSuggested')) return;
+  if (!root || state.get<boolean>('c42checker.abortSuggested')) return;
   const launch = path.join(root, '.vscode', 'launch.json');
-  if (!fs.existsSync(launch) || !usesC42check(fs.readFileSync(launch, 'utf8'))) return;
+  if (!fs.existsSync(launch) || !usesC42checker(fs.readFileSync(launch, 'utf8'))) return;
   if (vscode.workspace.getConfiguration('debug').get<string>('onTaskErrors') === 'abort') return;
-  await state.update('c42check.abortSuggested', true);
+  await state.update('c42checker.abortSuggested', true);
   const pick = await vscode.window.showInformationMessage(
-    '42 Check: 事前チェック失敗時にデバッガを確実に止めるには debug.onTaskErrors を abort にします。',
+    'c42checker: 事前チェック失敗時にデバッガを確実に止めるには debug.onTaskErrors を abort にします。',
     '確認する',
   );
   if (pick === '確認する') await proposeAbortOnTaskErrors(true);

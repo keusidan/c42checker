@@ -34,15 +34,15 @@ export function activate(context: vscode.ExtensionContext): void {
   const outputs = new Outputs();
   const problems = new Problems();
   const statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
-  statusBar.text = '$(checklist) 42 Check';
+  statusBar.text = '$(checklist) c42checker';
   statusBar.tooltip = 'チェック済みの検証項目を段階順に実行 (fail-fast)';
-  statusBar.command = 'c42check.run';
+  statusBar.command = 'c42checker.run';
   statusBar.show();
 
   const runner = new Runner(outputs, problems, statusBar);
   const tree = new CheckTree(runner);
   const proto = new ProtoSync(outputs, problems, runner);
-  const treeView = vscode.window.createTreeView('c42check.view', { treeDataProvider: tree });
+  const treeView = vscode.window.createTreeView('c42checker.view', { treeDataProvider: tree });
 
   const reg = vscode.commands.registerCommand;
   context.subscriptions.push(
@@ -55,28 +55,28 @@ export function activate(context: vscode.ExtensionContext): void {
     treeView,
     treeView.onDidChangeCheckboxState((e) => void tree.onCheckbox(e.items)),
     vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration('c42check')) tree.refresh();
+      if (e.affectsConfiguration('c42checker')) tree.refresh();
     }),
     vscode.workspace.onDidSaveTextDocument((doc) => proto.onSaved(doc)),
     vscode.workspace.registerTextDocumentContentProvider(PROPOSAL_SCHEME, proto.provider),
     vscode.tasks.registerTaskProvider(CheckTaskProvider.type, new CheckTaskProvider(runner)),
 
-    reg('c42check.run', () => runner.run('check')),
-    reg('c42check.runStep', async (arg?: unknown) => {
+    reg('c42checker.run', () => runner.run('check')),
+    reg('c42checker.runStep', async (arg?: unknown) => {
       const id = stepIdOf(arg) ?? (await pickStep());
       if (id) await runner.run('check', undefined, [id]);
     }),
-    reg('c42check.cancel', () => runner.cancel()),
-    reg('c42check.refresh', () => tree.refresh()),
-    reg('c42check.syncPrototypes', () => proto.runCommand()),
-    reg('c42check.selectProtoHeader', () => proto.selectHeader()),
-    reg('c42check.applyProposal', () => proto.applyProposal()),
-    reg('c42check.cancelProposal', () => proto.cancelProposal()),
-    reg('c42check.showLog', (name?: string) => outputs.get(typeof name === 'string' ? name : 'main').show(true)),
-    reg('c42check.runArgs', () => shellQuoteArgs(readSettings().runArgs)),
-    reg('c42check.generateDebugConfig', () => generateDebugConfig()),
-    reg('c42check.proposeAbortOnTaskErrors', () => proposeAbortOnTaskErrors(true)),
-    reg('c42check.regenerateCompdb', async () => {
+    reg('c42checker.cancel', () => runner.cancel()),
+    reg('c42checker.refresh', () => tree.refresh()),
+    reg('c42checker.syncPrototypes', () => proto.runCommand()),
+    reg('c42checker.selectProtoHeader', () => proto.selectHeader()),
+    reg('c42checker.applyProposal', () => proto.applyProposal()),
+    reg('c42checker.cancelProposal', () => proto.cancelProposal()),
+    reg('c42checker.showLog', (name?: string) => outputs.get(typeof name === 'string' ? name : 'main').show(true)),
+    reg('c42checker.runArgs', () => shellQuoteArgs(readSettings().runArgs)),
+    reg('c42checker.generateDebugConfig', () => generateDebugConfig()),
+    reg('c42checker.proposeAbortOnTaskErrors', () => proposeAbortOnTaskErrors(true)),
+    reg('c42checker.regenerateCompdb', async () => {
       const root = workspaceRoot();
       if (!root) return;
       const ctx = createContext({ root, settings: readSettings(), io: { log: () => undefined } });
@@ -85,19 +85,19 @@ export function activate(context: vscode.ExtensionContext): void {
         const g = await ensureGenerated(ctx, { force: true });
         const r = g.compdb.result!;
         void vscode.window.showInformationMessage(
-          `42 Check: compile_commands.json を再生成しました (${r.method}, ${r.entries} 件)。${g.clangd.action === 'generated' ? '.clangd も更新しました。' : (g.clangd.reason ?? '')}${r.note ? ` ${r.note}` : ''}`,
+          `c42checker: compile_commands.json を再生成しました (${r.method}, ${r.entries} 件)。${g.clangd.action === 'generated' ? '.clangd も更新しました。' : (g.clangd.reason ?? '')}${r.note ? ` ${r.note}` : ''}`,
         );
       } catch (e) {
-        void vscode.window.showErrorMessage(`42 Check: 再生成に失敗しました: ${String(e)}`);
+        void vscode.window.showErrorMessage(`c42checker: 再生成に失敗しました: ${String(e)}`);
       }
     }),
-    reg('c42check.cleanWorkDir', () => {
+    reg('c42checker.cleanWorkDir', () => {
       const root = workspaceRoot();
       if (!root) return;
       const ctx = createContext({ root, settings: readSettings(), io: { log: () => undefined } });
       const mb = Math.ceil(dirSize(ctx.workDir) / (1024 * 1024));
       resetWorkDir(ctx.workDir, [STATE_DIR]); // 生成済みの記録 (state/) は残す (消すと、compile_commands.json を自分のものと見分けられなくなる)
-      void vscode.window.showInformationMessage(`42 Check: .42check/ を削除しました (約 ${mb}MB)。`);
+      void vscode.window.showInformationMessage(`c42checker: .42check/ を削除しました (約 ${mb}MB)。`);
     }),
   );
 

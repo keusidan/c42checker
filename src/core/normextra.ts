@@ -361,7 +361,7 @@ function checkVariableNames(p: Parsed, out: Finding[], shortNames: ReadonlySet<s
           line: v.line,
           rule: 'bad-variable-name',
           strength: 'review',
-          message: `${v.kind}名 ${v.name}: ${why}。名前は explicit / mnemonic にします (Norm III.1)${v.name.length === 1 ? ` (許可する 1 文字の名前は設定 c42check.normExtra.shortNames)` : ''}`,
+          message: `${v.kind}名 ${v.name}: ${why}。名前は explicit / mnemonic にします (Norm III.1)${v.name.length === 1 ? ` (許可する 1 文字の名前は設定 c42checker.normExtra.shortNames)` : ''}`,
         });
       }
     }

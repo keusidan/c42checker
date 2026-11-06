@@ -17,11 +17,11 @@ export function sampleContext(
   fs.cpSync(path.join(REPO, 'samples', name), dir, { recursive: true });
   for (const r of remove) fs.rmSync(path.join(dir, r), { recursive: true, force: true });
   const settings: Settings = { ...DEFAULT_SETTINGS, normExclude: [], ...overrides, checks: { ...DEFAULT_SETTINGS.checks, ...overrides.checks } };
-  // .vscode/settings.json の c42check.* を反映 (拡張が VS Code から読むものの代わり)
+  // .vscode/settings.json の c42checker.* を反映 (拡張が VS Code から読むものの代わり)
   try {
     const raw = JSON.parse(fs.readFileSync(path.join(dir, '.vscode', 'settings.json'), 'utf8')) as Record<string, unknown>;
-    if (typeof raw['c42check.mainFile'] === 'string' && overrides.mainFile === undefined) {
-      settings.mainFile = raw['c42check.mainFile'];
+    if (typeof raw['c42checker.mainFile'] === 'string' && overrides.mainFile === undefined) {
+      settings.mainFile = raw['c42checker.mainFile'];
     }
   } catch {
     /* 設定なし */

@@ -106,7 +106,7 @@ export class CheckTree implements vscode.TreeDataProvider<Node>, vscode.Disposab
     if (result?.reason) tip.appendMarkdown(`\n\n${result.reason}`);
     if (result?.hint) tip.appendMarkdown(`\n\n対処案: ${result.hint}`);
     item.tooltip = tip;
-    item.command = { command: 'c42check.showLog', title: 'ログを表示', arguments: [step.label] };
+    item.command = { command: 'c42checker.showLog', title: 'ログを表示', arguments: [step.label] };
     return item;
   }
 
@@ -119,9 +119,9 @@ export class CheckTree implements vscode.TreeDataProvider<Node>, vscode.Disposab
       ? vscode.TreeItemCheckboxState.Checked
       : vscode.TreeItemCheckboxState.Unchecked;
     item.iconPath = new vscode.ThemeIcon('settings-gear');
-    item.description = `c42check.${def.key}`;
+    item.description = `c42checker.${def.key}`;
     const tip = new vscode.MarkdownString();
-    tip.appendMarkdown(`**${def.label}**\n\n${def.description}\n\n設定キー: \`c42check.${def.key}\` (ワークスペースの settings.json と双方向に同期)`);
+    tip.appendMarkdown(`**${def.label}**\n\n${def.description}\n\n設定キー: \`c42checker.${def.key}\` (ワークスペースの settings.json と双方向に同期)`);
     item.tooltip = tip;
     return item;
   }
@@ -137,7 +137,7 @@ export class CheckTree implements vscode.TreeDataProvider<Node>, vscode.Disposab
     tip.appendMarkdown('**ヘッダにプロトタイプを反映**\n\nuniversal-ctags で .c の関数定義を抽出し、ヘッダの auto prototypes の区間だけを書き換えます (書き換え前に差分を表示)。');
     if (missing) tip.appendMarkdown(`\n\n未検出: ${INSTALL_HINTS.ctags}`);
     item.tooltip = tip;
-    item.command = { command: 'c42check.syncPrototypes', title: 'ヘッダにプロトタイプを反映' };
+    item.command = { command: 'c42checker.syncPrototypes', title: 'ヘッダにプロトタイプを反映' };
     return item;
   }
 
@@ -149,9 +149,9 @@ export class CheckTree implements vscode.TreeDataProvider<Node>, vscode.Disposab
     item.iconPath = new vscode.ThemeIcon('file-code');
     item.description = current || '自動 (マーカーのあるヘッダ)';
     const tip = new vscode.MarkdownString();
-    tip.appendMarkdown('**反映先のヘッダ**\n\nクリックで、プロトタイプを反映するヘッダを一覧から選びます (設定 `c42check.proto.header` に保存)。「自動で選ぶ」を選ぶと、マーカー (auto prototypes) のあるヘッダを自動で選びます。');
+    tip.appendMarkdown('**反映先のヘッダ**\n\nクリックで、プロトタイプを反映するヘッダを一覧から選びます (設定 `c42checker.proto.header` に保存)。「自動で選ぶ」を選ぶと、マーカー (auto prototypes) のあるヘッダを自動で選びます。');
     item.tooltip = tip;
-    item.command = { command: 'c42check.selectProtoHeader', title: 'プロトタイプの反映先のヘッダを選ぶ' };
+    item.command = { command: 'c42checker.selectProtoHeader', title: 'プロトタイプの反映先のヘッダを選ぶ' };
     return item;
   }
 

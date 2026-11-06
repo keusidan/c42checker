@@ -408,7 +408,7 @@ test('既定は ON (DEFAULT_SETTINGS と package.json が一致)', () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')) as {
     contributes: { configuration: { properties: Record<string, { default: unknown }> } };
   };
-  assert.equal(pkg.contributes.configuration.properties['c42check.proto.skipExisting'].default, true);
+  assert.equal(pkg.contributes.configuration.properties['c42checker.proto.skipExisting'].default, true);
 });
 
 test('全ての関数が手書きで宣言済みなら、ブロックは空になる (エラーではない)', async (t) => {
@@ -591,5 +591,5 @@ test('proto.updateExisting: 既定は ON (DEFAULT_SETTINGS と package.json が�
   const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')) as {
     contributes: { configuration: { properties: Record<string, { default: unknown }> } };
   };
-  assert.equal(pkg.contributes.configuration.properties['c42check.proto.updateExisting'].default, true);
+  assert.equal(pkg.contributes.configuration.properties['c42checker.proto.updateExisting'].default, true);
 });

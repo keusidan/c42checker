@@ -1,4 +1,4 @@
-// コンパイル引数の設定 (c42check.compile.* / clangTidy.checks / valgrind.args) の検証。
+// コンパイル引数の設定 (c42checker.compile.* / clangTidy.checks / valgrind.args) の検証。
 // 本物の clang / clang-tidy / gcc / valgrind があれば使う。
 import * as assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -229,13 +229,13 @@ const state = (vscode as unknown as { state: { config: Record<string, unknown> }
 
 test('VS Code の設定 → Settings: 新しい設定キーを読む。型が違う設定は既定値に戻す', () => {
   state.config = {
-    'c42check.compile.cflags': ['-DDEBUG'],
-    'c42check.compile.ldflags': ['-L/usr/local/lib'],
-    'c42check.compile.libs': ['-lbsd', '-lm'],
-    'c42check.compile.perStep': { warnings: ['-Wno-x'], valgrind: ['--v'], unknownStep: ['-z'], tsan: 'not-an-array' },
-    'c42check.clangTidy.checks': 'bugprone-*',
-    'c42check.valgrind.args': ['--leak-check=yes'],
-    'c42check.compile.warningFlags': 'oops-a-string',
+    'c42checker.compile.cflags': ['-DDEBUG'],
+    'c42checker.compile.ldflags': ['-L/usr/local/lib'],
+    'c42checker.compile.libs': ['-lbsd', '-lm'],
+    'c42checker.compile.perStep': { warnings: ['-Wno-x'], valgrind: ['--v'], unknownStep: ['-z'], tsan: 'not-an-array' },
+    'c42checker.clangTidy.checks': 'bugprone-*',
+    'c42checker.valgrind.args': ['--leak-check=yes'],
+    'c42checker.compile.warningFlags': 'oops-a-string',
   };
   const s = readSettings();
   assert.deepEqual([s.compileCflags, s.compileLdflags, s.compileLibs], [['-DDEBUG'], ['-L/usr/local/lib'], ['-lbsd', '-lm']]);
@@ -251,14 +251,14 @@ test('package.json のスキーマと既定値: DEFAULT_SETTINGS と一致し、
   };
   const p = pkg.contributes.configuration.properties;
   const d: Settings = DEFAULT_SETTINGS;
-  assert.deepEqual(p['c42check.compile.cflags'].default, d.compileCflags);
-  assert.deepEqual(p['c42check.compile.ldflags'].default, d.compileLdflags);
-  assert.deepEqual(p['c42check.compile.libs'].default, d.compileLibs);
-  assert.deepEqual(p['c42check.compile.warningFlags'].default, d.compileWarningFlags);
-  assert.equal(p['c42check.clangTidy.checks'].default, d.clangTidyChecks);
-  assert.deepEqual(p['c42check.valgrind.args'].default, d.valgrindArgs);
-  assert.deepEqual(Object.keys(p['c42check.compile.perStep'].properties ?? {}).sort(), [...STEP_IDS].sort(), '全ての項目名が補完に出る');
-  assert.equal(p['c42check.compile.perStep'].additionalProperties, false, '項目名の書き間違いを警告できる');
+  assert.deepEqual(p['c42checker.compile.cflags'].default, d.compileCflags);
+  assert.deepEqual(p['c42checker.compile.ldflags'].default, d.compileLdflags);
+  assert.deepEqual(p['c42checker.compile.libs'].default, d.compileLibs);
+  assert.deepEqual(p['c42checker.compile.warningFlags'].default, d.compileWarningFlags);
+  assert.equal(p['c42checker.clangTidy.checks'].default, d.clangTidyChecks);
+  assert.deepEqual(p['c42checker.valgrind.args'].default, d.valgrindArgs);
+  assert.deepEqual(Object.keys(p['c42checker.compile.perStep'].properties ?? {}).sort(), [...STEP_IDS].sort(), '全ての項目名が補完に出る');
+  assert.equal(p['c42checker.compile.perStep'].additionalProperties, false, '項目名の書き間違いを警告できる');
 });
 
 /* ───────── ignoreMakefile ───────── */
@@ -312,20 +312,20 @@ test('ignoreMakefile: 壊れた Makefile があっても、compile.cflags とソ
   on.cleanup();
 });
 
-test('ignoreMakefile: 設定 c42check.ignoreMakefile と norminette.ignoreParameterErrors を VS Code の設定から読む。既定は OFF で、package.json と一致', () => {
+test('ignoreMakefile: 設定 c42checker.ignoreMakefile と norminette.ignoreParameterErrors を VS Code の設定から読む。既定は OFF で、package.json と一致', () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')) as {
     contributes: { configuration: { properties: Record<string, { default: unknown; type: string }> } };
   };
   const p = pkg.contributes.configuration.properties;
-  assert.deepEqual([p['c42check.ignoreMakefile'].type, p['c42check.ignoreMakefile'].default], ['boolean', DEFAULT_SETTINGS.ignoreMakefile]);
+  assert.deepEqual([p['c42checker.ignoreMakefile'].type, p['c42checker.ignoreMakefile'].default], ['boolean', DEFAULT_SETTINGS.ignoreMakefile]);
   assert.deepEqual(
-    [p['c42check.norminette.ignoreParameterErrors'].type, p['c42check.norminette.ignoreParameterErrors'].default],
+    [p['c42checker.norminette.ignoreParameterErrors'].type, p['c42checker.norminette.ignoreParameterErrors'].default],
     ['boolean', DEFAULT_SETTINGS.norminetteIgnoreParameterErrors],
   );
   assert.deepEqual([DEFAULT_SETTINGS.ignoreMakefile, DEFAULT_SETTINGS.norminetteIgnoreParameterErrors], [false, false]);
   state.config = {};
   assert.deepEqual([readSettings().ignoreMakefile, readSettings().norminetteIgnoreParameterErrors], [false, false]);
-  state.config = { 'c42check.ignoreMakefile': true, 'c42check.norminette.ignoreParameterErrors': true };
+  state.config = { 'c42checker.ignoreMakefile': true, 'c42checker.norminette.ignoreParameterErrors': true };
   assert.deepEqual([readSettings().ignoreMakefile, readSettings().norminetteIgnoreParameterErrors], [true, true]);
   state.config = {};
 });

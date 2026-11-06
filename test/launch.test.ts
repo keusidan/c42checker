@@ -8,7 +8,7 @@ import {
   mergeJsonFile,
   PRE_DEBUG_LABEL,
   shellQuoteArgs,
-  usesC42check,
+  usesC42checker,
 } from '../src/core/launchConfig';
 
 const opts = { cwd: '${workspaceFolder}', terminal: 'integrated' };
@@ -33,10 +33,10 @@ test('launch 構成: lldb / launch、F5 の既定は事前チェックあり、�
   assert.match(String(pre.program), /\.42check\/debug\/prog$/);
 });
 
-test('tasks: c42check type の 2 つ。label は launch の preLaunchTask と一致する', () => {
+test('tasks: c42checker type の 2 つ。label は launch の preLaunchTask と一致する', () => {
   const t = buildTasks();
   assert.deepEqual(t.map((x) => x.label), [PRE_DEBUG_LABEL, BUILD_DEBUG_LABEL]);
-  assert.deepEqual(t.map((x) => [x.type, x.mode]), [['c42check', 'pre-debug'], ['c42check', 'build-debug']]);
+  assert.deepEqual(t.map((x) => [x.type, x.mode]), [['c42checker', 'pre-debug'], ['c42checker', 'build-debug']]);
 });
 
 test('マージ: ファイルが無ければ新規、既存の項目は変更せず、無いものだけ先頭に足す', () => {
@@ -57,9 +57,9 @@ test('マージ: ファイルが無ければ新規、既存の項目は変更せ
   assert.equal(again.kept.length, 2);
 });
 
-test('usesC42check / shellQuoteArgs', () => {
-  assert.equal(usesC42check('{"configurations":[{"preLaunchTask":"c42check: pre-debug"}]}'), true);
-  assert.equal(usesC42check('{"configurations":[]}'), false);
+test('usesC42checker / shellQuoteArgs', () => {
+  assert.equal(usesC42checker('{"configurations":[{"preLaunchTask":"c42checker: pre-debug"}]}'), true);
+  assert.equal(usesC42checker('{"configurations":[]}'), false);
   assert.equal(shellQuoteArgs(['a b', "it's"]), `'a b' 'it'\\''s'`);
   assert.equal(shellQuoteArgs([]), '');
 });

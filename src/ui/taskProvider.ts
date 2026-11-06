@@ -28,7 +28,7 @@ class CheckTerminal implements vscode.Pseudoterminal {
 }
 
 export class CheckTaskProvider implements vscode.TaskProvider {
-  static readonly type = 'c42check';
+  static readonly type = 'c42checker';
 
   constructor(private readonly runner: Runner) {}
 

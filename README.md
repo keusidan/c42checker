@@ -1,4 +1,4 @@
-# 42 Check
+# c42checker
 
 42 Tokyo の課題 (C 言語、42 Norm 準拠) 向けに、検証ツール一式をチェックボックスで選び、ワンクリックで**段階的に (fail-fast で)** 実行する VS Code 拡張機能です。
 F5 で CodeLLDB のデバッガを起動でき、**事前チェックに落ちたらデバッガも後続の手順も実行されません**。
@@ -22,8 +22,8 @@ F5 で CodeLLDB のデバッガを起動でき、**事前チェックに落ち�
 | 2 動的チェック | ASan(AddressSanitizer) + UBSan(UndefinedBehaviorSanitizer) / TSan(ThreadSanitizer) / MSan(MemorySanitizer) / valgrind を、**項目ごとに別ビルド**で実行。任意で CBMC / Frama-C Eva (ネイティブにある場合のみ) |
 | 3 デバッガ | F5 経由のときのみ。デバッグ用ビルド (`.42check/debug/prog`) の後、CodeLLDB が起動 |
 
-- 同じ段階の中は全項目を実行して結果をまとめます (`c42check.failFast: "stage"`、既定)。`"step"` にすると最初の失敗で止まります。
-- 止まった場所 (どの段階のどの項目か) は、通知と Output Channel (`42 Check`) に出ます。
+- 同じ段階の中は全項目を実行して結果をまとめます (`c42checker.failFast: "stage"`、既定)。`"step"` にすると最初の失敗で止まります。
+- 止まった場所 (どの段階のどの項目か) は、通知と Output Channel (`c42checker`) に出ます。
 - 校舎のツール名 (`clang-12`、`clang-tidy-12`、`scan-build-12`、`gcc-12`) を優先して検出し、無ければ素の名前、それも無ければ入っている最新版を使います (メイン機の Arch 向け)。
 
 ### 合否判定の補正 (ツールの既定の終了コードだけでは fail にならないもの)
@@ -37,17 +37,17 @@ F5 で CodeLLDB のデバッガを起動でき、**事前チェックに落ち�
 | valgrind | `--error-exitcode=99`、閉じていない (継承されていない) fd も fail |
 | TSan | `WARNING: ThreadSanitizer` の報告で fail (データ競合の位置に診断)。制限時間は他の 3 倍 |
 | MSan | `WARNING: MemorySanitizer` の報告で fail (未初期化値の使用位置に診断、origins を追跡)。制限時間は他の 3 倍 |
-| 動的チェックの実行 | stdin は `/dev/null`、制限時間 (`c42check.runTimeoutSec`) を超えると**検査が完了していないので skip** (失敗にはしません) |
+| 動的チェックの実行 | stdin は `/dev/null`、制限時間 (`c42checker.runTimeoutSec`) を超えると**検査が完了していないので skip** (失敗にはしません) |
 
 プログラムが正常に `exit(1)` するだけでは、ASan / valgrind 側では失敗にしません (sanitizer / valgrind の報告があるかで判定)。
 
 ### norminette / 整形の対象から外すファイル (既定: `main.c`)
 
-`c42check.normExclude` に一致するファイルは、**norminette の検査と、c_formatter_42 の整形の対象から外れ、ヘッダへのプロトタイプ同期でも関数を拾いません**。既定は `["main.c"]` です (テスト用関数を書いた `main.c` など、norm に合わせたくない・ヘッダに載せたくないファイル向け)。
+`c42checker.normExclude` に一致するファイルは、**norminette の検査と、c_formatter_42 の整形の対象から外れ、ヘッダへのプロトタイプ同期でも関数を拾いません**。既定は `["main.c"]` です (テスト用関数を書いた `main.c` など、norm に合わせたくない・ヘッダに載せたくないファイル向け)。
 
 - **外れるのは、この 3 つだけです。** 警告強化ビルド、clang-tidy、`gcc -fanalyzer`、scan-build、sanitizer、valgrind は、除外したファイルにも行われます。
 - パターンの書き方: `/` を含まなければ**ファイル名**に一致 (どの深さでも。`main.c` は `src/main.c` にも一致)、含めば**ルートからの相対パス**に一致 (`/main.c` は直下だけ)、`/` で終われば**そのディレクトリ以下の全て** (`tests/`)。`*` は `/` 以外の任意の文字列、`**` は `/` も含む任意の文字列。
-- 例: `"c42check.normExclude": ["main.c", "tests/", "*_test.c"]`。空にすると、全ての `.c` / `.h` が対象です。
+- 例: `"c42checker.normExclude": ["main.c", "tests/", "*_test.c"]`。空にすると、全ての `.c` / `.h` が対象です。
 - 対象が全て除外されたときは、失敗ではなく skip になります。
 
 ### Norm の (*) 規則と Makefile の検査 (norminette が検査しないもの)
@@ -55,7 +55,7 @@ F5 で CodeLLDB のデバッガを起動でき、**事前チェックに落ち�
 Norm v4.1 の冒頭 (Chapter I Foreword) によると、`(*)` が付いた規則は **norminette が検査せず、評価で見つかるとプロジェクト失敗 (Norm flag) になりえます**。Makefile (III.11) も norminette は検査しません。
 この拡張は、これらのうち**機械で判定できる部分**を、段階 1 の 2 つの項目で検査します。出典: [The Norm, Version 4.1](https://github.com/42School/norminette) (42 Network)。
 
-**判定は 2 段階です。** `error` は規則の文面から機械的に決まるもので、**fail** です。`review` は疑わしいだけで、人の目で確かめるものです。Problems には warning として出ますが、既定では fail にしません (`c42check.normExtra.reviewAsFail: true` で fail にできます)。
+**判定は 2 段階です。** `error` は規則の文面から機械的に決まるもので、**fail** です。`review` は疑わしいだけで、人の目で確かめるものです。Problems には warning として出ますが、既定では fail にしません (`c42checker.normExtra.reviewAsFail: true` で fail にできます)。
 
 | Norm | `(*)` の規則 | この拡張の検査 (規則の id) | 強さ |
 |---|---|---|---|
@@ -83,17 +83,17 @@ Norm v4.1 の冒頭 (Chapter I Foreword) によると、`(*)` が付いた規則
 - 提供する名前が重なる include (`size_t` だけを使うときの `<stdlib.h>` と `<stdio.h>` など) は、外せるものを全部外すと通らないので、**review** にします (どれか 1 つは必要)。
 - 外す前から fatal error (include が見つからない) のファイルや、clang が無いときは、名前による判定 (標準ヘッダの表と ctags) だけにします。
 - **取りこぼし**: `#ifdef` で使うマクロだけを提供する include は、外しても診断が変わらないので、未使用と判定されます。理由があるなら、その行にコメントで書いてください (コメントのある include は判定しません)。
-- include の数だけ構文チェックを走らせます (`c42check.staticTimeoutSec` の 3 倍で打ち切り、残りは名前の表で判定します)。
+- include の数だけ構文チェックを走らせます (`c42checker.staticTimeoutSec` の 3 倍で打ち切り、残りは名前の表で判定します)。
 
-**include の二重指定を検出する (オプション、既定 OFF)**: `c42check.normExtra.detectDuplicateIncludes` を `true` にする (View の「設定」グループの「include の二重指定を検出」) と、次を **error** として検出します (規則の id: `duplicate-include`)。
+**include の二重指定を検出する (オプション、既定 OFF)**: `c42checker.normExtra.detectDuplicateIncludes` を `true` にする (View の「設定」グループの「include の二重指定を検出」) と、次を **error** として検出します (規則の id: `duplicate-include`)。
 
 - 同じファイルの中で、同じヘッダを 2 回以上 include している (後ろの行を指します)
 - ファイルが X を include していて、同じファイルが include するプロジェクトのヘッダ (その先のヘッダも含む) が、すでに X を include している = **ヘッダとソースの両方に書いている** (ソース側の行を指します)
-- コメントで理由を書いた include は除きます。`c42check.normExtra.disable` に `duplicate-include` を入れても、検出しません。
+- コメントで理由を書いた include は除きます。`c42checker.normExtra.disable` に `duplicate-include` を入れても、検出しません。
 
 OFF のままなら、ヘッダとソースの両方に書いてあっても、使っていれば問題にしません (使うものを自分のファイルに明示する書き方もよく使われるため)。**検出するだけで、自動では削除しません** (どちらを残すかは人が決めます)。
 
-**使っていない include を削除する (オプション、既定 OFF)**: `c42check.normExtra.removeUnusedIncludes` を `true` にする (View の「設定」グループの「使っていない #include を削除」) と、検査のときに、**コンパイラで未使用と確かめた `#include` をファイルから削除**します。ソースを書き換えるので、既定は OFF です。
+**使っていない include を削除する (オプション、既定 OFF)**: `c42checker.normExtra.removeUnusedIncludes` を `true` にする (View の「設定」グループの「使っていない #include を削除」) と、検査のときに、**コンパイラで未使用と確かめた `#include` をファイルから削除**します。ソースを書き換えるので、既定は OFF です。
 
 - 削除するのは、上の方法で「外しても診断が増えない」と確かめた include (error) だけです。**提供する名前が重なる include (review)、コメントで理由を書いた include、clang が無いときなどの名前の表による判定のものは、削除しません。**
 - include を全部消した跡に、空行が連続しないよう詰めます (Norm: 連続する空行は禁止)。
@@ -101,14 +101,14 @@ OFF のままなら、ヘッダとソースの両方に書いてあっても、�
 - エディタに未保存の変更があるファイルは、書き換えません (error のまま残ります)。保存してから、もう一度実行してください。
 - 変更前の内容は `.42check/include-backup/` に退避されます (次の実行で消えます)。Git で管理していれば、`git diff` / `git checkout` でも戻せます。
 - 削除は、ディスク上のファイルを書き換えるだけです。42 ヘッダの `Updated:` は、エディタで保存したときのようには更新されません。
-- `c42check.normExtra.disable` に `unused-include` を入れていれば、削除もしません。
+- `c42checker.normExtra.disable` に `unused-include` を入れていれば、削除もしません。
 
 **機械では判定できない項目は、毎回ログの末尾にチェックリストで出します** (`[ ] III.1 (*) …`)。たとえば「名前が英語として読める」「標準ライブラリのマクロが課題で許可された範囲か」「carryall / bad function が無い」「42 ヘッダが保存のたびに更新されている」は、人が見るしかありません。
 つまり、この検査が通っても **`(*)` 規則を全て満たしたことにはなりません**。評価で見られる項目のうち、機械で拾える分を先に潰すためのものです。
 
 **誤検知への対処**: 判定は、誤検知より見逃しを選ぶ側 (ヘッダが複数の標準ヘッダの名前を共有するときは「使っている」とみなす、など) に倒していますが、完全ではありません。
-**関数の引数名を検査するか**は `c42check.normExtra.checkParameterNames` (既定: `true`) で選べます。`false` にすると、`ft_memcmp(const void *s1, const void *s2, size_t n)` の `s1` / `s2` のような引数名は検査しません (**関数の中のローカル変数は、引き続き検査します**)。変数名の検査そのものを止めるには、`c42check.normExtra.disable` に `bad-variable-name` を入れます。
-続く規則だけを、`c42check.normExtra.disable` (規則の id の配列) で外せます。使ってよい 1 文字の変数名は `c42check.normExtra.shortNames` (既定: `i j k c n s`) です。`c42check.normExclude` (既定: `main.c`) に一致するファイルは、この検査の対象外です。
+**関数の引数名を検査するか**は `c42checker.normExtra.checkParameterNames` (既定: `true`) で選べます。`false` にすると、`ft_memcmp(const void *s1, const void *s2, size_t n)` の `s1` / `s2` のような引数名は検査しません (**関数の中のローカル変数は、引き続き検査します**)。変数名の検査そのものを止めるには、`c42checker.normExtra.disable` に `bad-variable-name` を入れます。
+続く規則だけを、`c42checker.normExtra.disable` (規則の id の配列) で外せます。使ってよい 1 文字の変数名は `c42checker.normExtra.shortNames` (既定: `i j k c n s`) です。`c42checker.normExclude` (既定: `main.c`) に一致するファイルは、この検査の対象外です。
 
 **Makefile (Norm III.11)** は、プロジェクトの**コピー**で実際に `make` を動かして検査します (元のファイルは変えません)。
 
@@ -120,20 +120,20 @@ OFF のままなら、ヘッダとソースの両方に書いてあっても、�
 - 同梱のライブラリ (Makefile のあるディレクトリを `-L` で指定) を `$(MAKE) -C` などで自動ビルドしている (error)
 - 複数のバイナリを作る課題で、バイナリごとの規則がある → **機械では判定できません** (ログのチェックリスト)
 
-Makefile が無いプロジェクトでは skip です。Makefile が実行する命令 (`git clone` など) も、そのまま動く点に注意してください (コピーの中で実行し、`c42check.staticTimeoutSec` で打ち切ります)。
+Makefile が無いプロジェクトでは skip です。Makefile が実行する命令 (`git clone` など) も、そのまま動く点に注意してください (コピーの中で実行し、`c42checker.staticTimeoutSec` で打ち切ります)。
 
 ### 関数の引数についての norminette の指摘を除く
 
-`c42check.norminette.ignoreParameterErrors` (既定: `false`) を `true` にすると、norminette の指摘のうち**関数の引数についてのもの**を結果から除きます。
+`c42checker.norminette.ignoreParameterErrors` (既定: `false`) を `true` にすると、norminette の指摘のうち**関数の引数についてのもの**を結果から除きます。
 
 - 除くのは `TOO_MANY_ARGS` (引数が 5 個以上) / `NO_ARGS_VOID` (引数が空なのに `void` がない) / `MISSING_IDENTIFIER` (引数の型や名前の欠け) / `ARG_TYPE_UKN` (引数の型を認識できない) です。他の指摘は、そのまま残ります。
 - 除いた結果、他の指摘が残らなければ、norminette の項目は pass になります。除いた件数は、項目のログに出ます。
-- 引数の**名前**を見る `bad-variable-name` は別の設定です: `c42check.normExtra.checkParameterNames` を `false` にします。
+- 引数の**名前**を見る `bad-variable-name` は別の設定です: `c42checker.normExtra.checkParameterNames` を `false` にします。
 - Norm は関数の引数を 4 個までと定めていて、評価では指摘されます。課題の仕様で引数が増える場合などにだけ使ってください。
 
 ### Makefile を使わずにビルドオプションを指定する
 
-`c42check.ignoreMakefile` (既定: `false`) を `true` にすると、**Makefile があっても使わず**、`c42check.compile.*` (`cflags` / `ldflags` / `libs` / `perStep`) と、見つけた `.c` の一覧でビルドして検証します。Makefile が壊れている・未完成のとき、フラグを変えて試したいときに使います。
+`c42checker.ignoreMakefile` (既定: `false`) を `true` にすると、**Makefile があっても使わず**、`c42checker.compile.*` (`cflags` / `ldflags` / `libs` / `perStep`) と、見つけた `.c` の一覧でビルドして検証します。Makefile が壊れている・未完成のとき、フラグを変えて試したいときに使います。
 
 - **scan-build**: `make` の代わりに、`.c` を 1 つずつ `compile.cflags` つきでコンパイルして解析します (`useMakeCheckTarget` は使われません)。
 - **compile_commands.json**: `make -n` を読まず、ソース一覧 + `compile.cflags` から作ります (`compdb.source` が `make-n` でも)。
@@ -142,22 +142,22 @@ Makefile が無いプロジェクトでは skip です。Makefile が実行す�
 
 ```jsonc
 {
-  "c42check.ignoreMakefile": true,
-  "c42check.compile.cflags": ["-DDEBUG", "-I${workspaceFolder}/includes"],
-  "c42check.compile.libs": ["-lbsd"]
+  "c42checker.ignoreMakefile": true,
+  "c42checker.compile.cflags": ["-DDEBUG", "-I${workspaceFolder}/includes"],
+  "c42checker.compile.libs": ["-lbsd"]
 }
 ```
 
 ### コンパイル引数 (`-lbsd` など)
 
-`-lbsd` / `-lm` / `-DDEBUG` / `-L...` のような引数は、VS Code の設定 (`settings.json`、または設定画面で「c42check」を検索) から指定できます。
+`-lbsd` / `-lm` / `-DDEBUG` / `-L...` のような引数は、VS Code の設定 (`settings.json`、または設定画面で「c42checker」を検索) から指定できます。
 
 ```jsonc
 {
-  "c42check.compile.cflags": ["-DDEBUG", "-std=gnu11", "-I${workspaceFolder}/extra"],
-  "c42check.compile.ldflags": ["-L/usr/local/lib"],
-  "c42check.compile.libs": ["-lbsd", "-lm"],
-  "c42check.compile.perStep": {
+  "c42checker.compile.cflags": ["-DDEBUG", "-std=gnu11", "-I${workspaceFolder}/extra"],
+  "c42checker.compile.ldflags": ["-L/usr/local/lib"],
+  "c42checker.compile.libs": ["-lbsd", "-lm"],
+  "c42checker.compile.perStep": {
     "warnings": ["-Wno-unused-parameter"],
     "valgrind": ["--suppressions=${workspaceFolder}/readline.supp"]
   }
@@ -166,13 +166,13 @@ Makefile が無いプロジェクトでは skip です。Makefile が実行す�
 
 | 設定 | 渡し先 | 備考 |
 |---|---|---|
-| `c42check.compile.cflags` | **すべてのコンパイル**: 警告強化ビルド、clang-tidy (`--` の後)、`gcc -fanalyzer`、scan-build (Makefile が無いとき)、ASan / TSan / MSan / valgrind 用とデバッグ用のビルド、`compile_commands.json` (clangd) | `-D`、`-std`、`-I` など |
-| `c42check.compile.ldflags` | リンクする全ビルド (ASan / TSan / MSan / valgrind / デバッグ) の、**入力ファイルの前** | `-L`、`-Wl,-rpath,...` など |
-| `c42check.compile.libs` | リンクする全ビルドの、**入力ファイルの後ろ** | `-lbsd`、`-lm`、`-lreadline` など。**`-l` は必ずここに書く** |
-| `c42check.compile.perStep` | **その項目のツールにだけ**渡す引数。キーは `c42check.checks` と同じ項目名 | 下の表 |
-| `c42check.compile.warningFlags` | 警告強化ビルドの警告フラグ (既定値を**置き換える**) | 既定: `-Wall -Wextra -Werror -Wshadow -Wconversion` |
-| `c42check.clangTidy.checks` | clang-tidy の `-checks=` (既定値を**置き換える**) | 既定: `clang-analyzer-*,bugprone-*` |
-| `c42check.valgrind.args` | valgrind のオプション (既定値を**置き換える**) | 既定: `--leak-check=full --show-leak-kinds=all --track-fds=yes`。判定に必要な `--error-exitcode` は常に付く |
+| `c42checker.compile.cflags` | **すべてのコンパイル**: 警告強化ビルド、clang-tidy (`--` の後)、`gcc -fanalyzer`、scan-build (Makefile が無いとき)、ASan / TSan / MSan / valgrind 用とデバッグ用のビルド、`compile_commands.json` (clangd) | `-D`、`-std`、`-I` など |
+| `c42checker.compile.ldflags` | リンクする全ビルド (ASan / TSan / MSan / valgrind / デバッグ) の、**入力ファイルの前** | `-L`、`-Wl,-rpath,...` など |
+| `c42checker.compile.libs` | リンクする全ビルドの、**入力ファイルの後ろ** | `-lbsd`、`-lm`、`-lreadline` など。**`-l` は必ずここに書く** |
+| `c42checker.compile.perStep` | **その項目のツールにだけ**渡す引数。キーは `c42checker.checks` と同じ項目名 | 下の表 |
+| `c42checker.compile.warningFlags` | 警告強化ビルドの警告フラグ (既定値を**置き換える**) | 既定: `-Wall -Wextra -Werror -Wshadow -Wconversion` |
+| `c42checker.clangTidy.checks` | clang-tidy の `-checks=` (既定値を**置き換える**) | 既定: `clang-analyzer-*,bugprone-*` |
+| `c42checker.valgrind.args` | valgrind のオプション (既定値を**置き換える**) | 既定: `--leak-check=full --show-leak-kinds=all --track-fds=yes`。判定に必要な `--error-exitcode` は常に付く |
 
 - **`-l` を `libs` に分けてあるのは、リンクの順序のためです。** 静的ライブラリ (`.a`) や、`--as-needed` で動くリンカーは、参照する側のファイルより**後ろ**にあるライブラリしか使いません。
   `ldflags` (入力の前) に `-lfoo` と書くと、`undefined reference` になります (静的ライブラリで実際に確認しています)。
@@ -180,7 +180,7 @@ Makefile が無いプロジェクトでは skip です。Makefile が実行す�
   shell は介さないので、`$HOME` や `*` は展開されません。
 - Makefile を使う項目 (Makefile があるときの scan-build) は、Makefile 自身のフラグで動きます (この設定は届きません)。
 
-`c42check.compile.perStep` の各キーが、何に渡るか:
+`c42checker.compile.perStep` の各キーが、何に渡るか:
 
 | キー | 渡し先 |
 |---|---|
@@ -278,9 +278,9 @@ code --install-extension llvm-vs-code-extensions.vscode-clangd
 ## 使い方
 
 1. 課題のフォルダを VS Code で開く (信頼するかを聞かれたら、信頼する。Makefile の評価と対象プログラムの実行を行うため、信頼されていないワークスペースでは動きません)
-2. アクティビティバーの **42 Check** を開く。段階ごとに項目が並び、チェックボックスで実行する項目を選ぶ (状態は `.vscode/settings.json` の `c42check.checks` に保存)
-3. View タイトルの ▶、またはステータスバーの `42 Check` で実行。実行中は ■ で中止できる
-4. 結果: 各項目に ✔ / ✘ / skip のアイコン。問題は Problems パネル (ファイル・行・列つき)、生ログはツールごとの Output Channel (`42 Check: <ツール名>`)
+2. アクティビティバーの **c42checker** を開く。段階ごとに項目が並び、チェックボックスで実行する項目を選ぶ (状態は `.vscode/settings.json` の `c42checker.checks` に保存)
+3. View タイトルの ▶、またはステータスバーの `c42checker` で実行。実行中は ■ で中止できる
+4. 結果: 各項目に ✔ / ✘ / skip のアイコン。問題は Problems パネル (ファイル・行・列つき)、生ログはツールごとの Output Channel (`c42checker: <ツール名>`)
 5. 未検出のツールは「未検出」と出て、実行すると **skip + 理由 + 対処案** になります (失敗ではありません)
 6. View の下の方に、**「ヘッダ」**(プロトタイプの反映) と **「設定」**(真偽値の設定のチェックボックス) のグループがあります (次の 2 節)
 
@@ -291,20 +291,20 @@ code --install-extension llvm-vs-code-extensions.vscode-clangd
 
 | チェックボックス | 対応する設定キー |
 |---|---|
-| failFast を step にする | `c42check.failFast` (ON = `"step"` / OFF = `"stage"`) |
-| ASan 付きデバッグ | `c42check.debug.sanitizer` |
-| Makefile を無視する | `c42check.ignoreMakefile` |
-| Makefile の check ターゲットを使う | `c42check.useMakeCheckTarget` |
-| 実行時 (段階 0) にプロトタイプを同期 | `c42check.proto.syncOnRun` |
-| 保存時にプロトタイプを同期 | `c42check.proto.syncOnSave` |
-| 使っていない #include を削除 | `c42check.normExtra.removeUnusedIncludes` |
-| include の二重指定を検出 | `c42check.normExtra.detectDuplicateIncludes` |
+| failFast を step にする | `c42checker.failFast` (ON = `"step"` / OFF = `"stage"`) |
+| ASan 付きデバッグ | `c42checker.debug.sanitizer` |
+| Makefile を無視する | `c42checker.ignoreMakefile` |
+| Makefile の check ターゲットを使う | `c42checker.useMakeCheckTarget` |
+| 実行時 (段階 0) にプロトタイプを同期 | `c42checker.proto.syncOnRun` |
+| 保存時にプロトタイプを同期 | `c42checker.proto.syncOnSave` |
+| 使っていない #include を削除 | `c42checker.normExtra.removeUnusedIncludes` |
+| include の二重指定を検出 | `c42checker.normExtra.detectDuplicateIncludes` |
 
 ### 項目を 1 つだけ実行する
 
 チェックの状態に関係なく、**1 つの項目だけ**を実行できます (準備 (段階 0) は行います)。
 - View の各項目にマウスを載せると出る ▷ ボタン、または右クリックの「この項目だけ実行」
-- コマンドパレットの「42 Check: この項目だけ実行」(項目を選びます)
+- コマンドパレットの「c42checker: この項目だけ実行」(項目を選びます)
 
 結果の表示 (View のアイコン・Problems・Output) は、その実行の分に入れ替わります。「ヘッダにプロトタイプを反映」は、もともと単独のコマンドです (View の「ヘッダ」グループの項目をクリック)。
 
@@ -317,17 +317,17 @@ code --install-extension llvm-vs-code-extensions.vscode-clangd
 /* ---- auto prototypes end ---- */
 ```
 
-- コマンドパレットの「42 Check: ヘッダにプロトタイプを反映」、または View の「ヘッダ」グループの項目から実行します。
-- 対象は `c42check.proto.sourceDir` 以下の `.c` (再帰。空なら `c42check.targetDir`)。**static 関数と `main` は除外**します。同名の定義が複数あれば (`#ifdef`) 最初の 1 つだけです。
-- 書き込み先は `c42check.proto.header` (空ならマーカーのあるヘッダを自動選択。複数あれば選択を求めます)。**View の「ヘッダ」グループの「反映先のヘッダ」** (またはコマンド「42 Check: プロトタイプの反映先のヘッダを選ぶ」) で、ワークスペースの全ての `.h` から選んで保存できます (一覧は、マーカーのあるヘッダが先頭。「自動で選ぶ」で設定を空に戻せます)。settings.json を手で書く必要はありません。
+- コマンドパレットの「c42checker: ヘッダにプロトタイプを反映」、または View の「ヘッダ」グループの項目から実行します。
+- 対象は `c42checker.proto.sourceDir` 以下の `.c` (再帰。空なら `c42checker.targetDir`)。**static 関数と `main` は除外**します。同名の定義が複数あれば (`#ifdef`) 最初の 1 つだけです。
+- 書き込み先は `c42checker.proto.header` (空ならマーカーのあるヘッダを自動選択。複数あれば選択を求めます)。**View の「ヘッダ」グループの「反映先のヘッダ」** (またはコマンド「c42checker: プロトタイプの反映先のヘッダを選ぶ」) で、ワークスペースの全ての `.h` から選んで保存できます (一覧は、マーカーのあるヘッダが先頭。「自動で選ぶ」で設定を空に戻せます)。settings.json を手で書く必要はありません。
 - **書き換える前に、差分をプレビューで表示**し、承認してから書き込みます。承認は通知ではなく、**差分エディタのタイトルバーのボタン**です (✓ 反映する / ✕ キャンセル)。
   反映すると、ヘッダが書き換わり、差分エディタは閉じます (成功したときは、通知を出しません)。差分のタブを × で閉じると、キャンセルと同じです。
   差分の右側は読み取り専用の仮想ドキュメントなので、編集も保存もできません (Ctrl+S で保存ダイアログは出ません。反映は、ボタンで行います)。
   差分を開いている間に、ヘッダが別に変更された / 未保存の変更がある場合は、上書きせずにエラーを出します。norminette が指摘したときだけ、通知が出ます (「元に戻す」を選べます)。
-- **手書きの宣言と重複させません** (`c42check.proto.skipExisting`、既定 ON): マーカーの**外**で、すでに宣言されている関数 (ヘッダにある宣言を、これも ctags で取得します) は、ブロックに入れません。
+- **手書きの宣言と重複させません** (`c42checker.proto.skipExisting`、既定 ON): マーカーの**外**で、すでに宣言されている関数 (ヘッダにある宣言を、これも ctags で取得します) は、ブロックに入れません。
   ブロックの中にある古い宣言は、この判定には使いません (定義が無くなった宣言は、ブロックから消えます)。OFF にすると、手書きの宣言があっても全てブロックに入れます。
   関数名の桁は、手書きの宣言の桁に揃えます (norm はヘッダ全体で桁を揃える規則 `MISALIGNED_FUNC_DECL` のため)。手書きの桁より、ブロックに必要な桁 (`unsigned long long` など) が広いときは、手書きの側は変えられないので、norminette が指摘します。
-- **手書きの宣言を、ソースの型に合わせます** (`c42check.proto.updateExisting`、既定 ON): マーカーの外の手書きの宣言が、ソースの定義と**型 (戻り値の型・引数の型)** で食い違うときは、ソースの型に書き換えます。
+- **手書きの宣言を、ソースの型に合わせます** (`c42checker.proto.updateExisting`、既定 ON): マーカーの外の手書きの宣言が、ソースの定義と**型 (戻り値の型・引数の型)** で食い違うときは、ソースの型に書き換えます。
   関数名の桁は元の宣言のまま、複数行の宣言は 1 行にまとめます。引数の**名前**だけの違いや、空白の違いは書き換えません。
   コメント・インデント・`extern` / `static` / `inline` を含む宣言と、1 行に複数の宣言がある行は、触りません。書き換えた宣言は、ログ (Output「プロトタイプ同期」) に `前 → 後` で出ます。OFF にすると、手書きの宣言は書き換えません。
 - **マーカーが無いヘッダには、勝手に挿入しません。** 挿入位置 (最後の `#endif` の直前、ガードが無ければ末尾) と差分を見せて、承認を取ります。マーカーが壊れている (片方だけ、重複、順序が逆) 場合はエラーです。
@@ -340,21 +340,21 @@ code --install-extension llvm-vs-code-extensions.vscode-clangd
 
 ### F5 でデバッグする
 
-1. コマンドパレット → `42 Check: launch.json / tasks.json を生成・更新`
+1. コマンドパレット → `c42checker: launch.json / tasks.json を生成・更新`
    - ファイルが無ければ作成。**既にあれば上書きせず**、差分 (マージ案) を見せて、承認後にだけ追記します (既存の項目は変更しません。JSON で書き出すため、既存のコメントは失われる点に注意)
    - 続けて、`debug.onTaskErrors` を `abort` にする提案が出ます。承認した場合だけ、このワークスペースの設定に書き込みます (勝手には書き換えません)
-2. F5。既定の構成は **「Debug (42 Check: 事前チェック → LLDB)」**: 段階 0〜2 → デバッグ用ビルド → CodeLLDB の順。事前チェックに落ちると、デバッガは起動しません
+2. F5。既定の構成は **「Debug (c42checker: 事前チェック → LLDB)」**: 段階 0〜2 → デバッグ用ビルド → CodeLLDB の順。事前チェックに落ちると、デバッガは起動しません
 3. 事前チェックを飛ばしたいときは、構成を **「Debug (skip checks) ※事前チェックを飛ばす」** に切り替える (デバッグ用ビルドだけ行う)
-4. デバッグ用ビルドは `-g -O0 -fno-omit-frame-pointer` で `.42check/debug/prog` に出力します。ASan + UBSan 付きにするには `c42check.debug.sanitizer: true`
-5. 引数は `c42check.runArgs` で変更できます。`cwd` と `terminal` は `c42check.debug.cwd` / `c42check.debug.terminal` (生成時に反映、既定は `${workspaceFolder}` と `integrated`)
+4. デバッグ用ビルドは `-g -O0 -fno-omit-frame-pointer` で `.42check/debug/prog` に出力します。ASan + UBSan 付きにするには `c42checker.debug.sanitizer: true`
+5. 引数は `c42checker.runArgs` で変更できます。`cwd` と `terminal` は `c42checker.debug.cwd` / `c42checker.debug.terminal` (生成時に反映、既定は `${workspaceFolder}` と `integrated`)
 
 ### main を持たない課題 (libft など)
 
-動的チェックとデバッグには `main` が要ります。`c42check.mainFile` にテスト用の main (`.c`) のパスを指定してください。
+動的チェックとデバッグには `main` が要ります。`c42checker.mainFile` にテスト用の main (`.c`) のパスを指定してください。
 
 - 対象ソースに `main` が**無い**ときだけ、動的チェックとデバッグ用ビルドに追加されます (ソースに `main` があれば無視)
 - `mainFile` は静的チェック (norminette など) の対象には**含まれません** (テスト用のコードなので)
-- `c42check.compdb.includeMain` (既定 `true`) で、`compile_commands.json` に含めるかを切り替えられます (含めると clangd がテスト main も解析します)
+- `c42checker.compdb.includeMain` (既定 `true`) で、`compile_commands.json` に含めるかを切り替えられます (含めると clangd がテスト main も解析します)
 - `main` が無く `mainFile` も無いときは、動的チェックは skip になり、理由と設定の案内が出ます
 - テスト main を課題のフォルダ内 (`tests/` など) に置いたとき、`mainFile` を指定しないと、それは通常のソースとして扱われます (norminette の対象になります)
 
@@ -363,13 +363,13 @@ code --install-extension llvm-vs-code-extensions.vscode-clangd
 - 言語サーバは既存の clangd 拡張を使います。この拡張は、段階 0 でワークスペースのルートに `compile_commands.json` と `.clangd` を生成するだけです。
   `bear` / `compiledb` は不要です。
 - **生成は、初回と、必要なときだけです (実行のたびには書き直しません)。** clangd は、`compile_commands.json` が書き換わるたびに読み直して再解析するので、内容が同じなのに毎回書き直すと、無駄に待たされるためです。
-  - `compile_commands.json`: 無ければ作ります。42 Check が作ったもの (`.42check/state/compdb.json` に記録があります) は、**中身が変わりうる入力が変わったときだけ**作り直します。入力は、対象の `.c` の一覧・include path・`mainFile`・clang の有無・設定 (`compdb.*` / `compile.cflags` / `includePaths` / `targetDir`)・Makefile の内容です。`.c` の中身の編集や、既存のディレクトリへのヘッダの追加では、作り直しません。
-  - **記録がないのに既にある** `compile_commands.json` (自分で用意したものや、記録を入れる前の版が作ったもの) は、**上書きしません**。42 Check で作り直すには、コマンド「42 Check: compile_commands.json を再生成」を実行してください (必ず書き直します。以降は 42 Check が作ったものとして、必要なときだけ更新します)。
-  - `.clangd`: **無いときだけ**作ります。既にあれば、42 Check 製のもの (`# generated by c42check` で始まる) も、自作のものも、書き直しません。作り直したいときは、ファイルを消してから再生成コマンドを実行してください。
-  - 記録 (`.42check/state/`) は、実行のたびの `.42check/` の作り直しや、「42 Check: .42check/ を削除」コマンドでも消えません。手で `.42check/` を丸ごと消すと、記録も消え、既にある `compile_commands.json` は「自分で用意したもの」として扱われます (再生成コマンドで直せます)。
-- 生成方式 (`c42check.compdb.source`): `auto` (既定: Makefile があれば `make -n -B` を解析、取れなければ `files`) / `files` (ソース一覧から直接) / `make-n` / `clang-MJ` (`clang -MJ` の断片を結合)。
+  - `compile_commands.json`: 無ければ作ります。c42checker が作ったもの (`.42check/state/compdb.json` に記録があります) は、**中身が変わりうる入力が変わったときだけ**作り直します。入力は、対象の `.c` の一覧・include path・`mainFile`・clang の有無・設定 (`compdb.*` / `compile.cflags` / `includePaths` / `targetDir`)・Makefile の内容です。`.c` の中身の編集や、既存のディレクトリへのヘッダの追加では、作り直しません。
+  - **記録がないのに既にある** `compile_commands.json` (自分で用意したものや、記録を入れる前の版が作ったもの) は、**上書きしません**。c42checker で作り直すには、コマンド「c42checker: compile_commands.json を再生成」を実行してください (必ず書き直します。以降は c42checker が作ったものとして、必要なときだけ更新します)。
+  - `.clangd`: **無いときだけ**作ります。既にあれば、c42checker 製のもの (`# generated by c42checker` で始まる) も、自作のものも、書き直しません。作り直したいときは、ファイルを消してから再生成コマンドを実行してください。
+  - 記録 (`.42check/state/`) は、実行のたびの `.42check/` の作り直しや、「c42checker: .42check/ を削除」コマンドでも消えません。手で `.42check/` を丸ごと消すと、記録も消え、既にある `compile_commands.json` は「自分で用意したもの」として扱われます (再生成コマンドで直せます)。
+- 生成方式 (`c42checker.compdb.source`): `auto` (既定: Makefile があれば `make -n -B` を解析、取れなければ `files`) / `files` (ソース一覧から直接) / `make-n` / `clang-MJ` (`clang -MJ` の断片を結合)。
   `make -n` は Makefile を評価します (`$(shell ...)` は実行されます)。
-- **clangd 内蔵の clang-tidy は、編集中の参考表示です。段階 1 の合否判定は、42 Check が直接実行する clang-tidy (校舎では `clang-tidy-12`) の結果を正とします。**
+- **clangd 内蔵の clang-tidy は、編集中の参考表示です。段階 1 の合否判定は、c42checker が直接実行する clang-tidy (校舎では `clang-tidy-12`) の結果を正とします。**
   両者は版も設定も違うため、編集中に出た警告とここでの結果が一致しないことがあります。
 - Microsoft C/C++ (`ms-vscode.cpptools`) は clangd と競合します。入っていれば通知しますが、設定は書き換えません。
 
@@ -377,32 +377,46 @@ code --install-extension llvm-vs-code-extensions.vscode-clangd
 
 | 設定 | 既定値 | 内容 |
 |---|---|---|
-| `c42check.targetDir` | `.` | 検証対象のディレクトリ |
-| `c42check.includePaths` | `[]` | 追加の include path (`.h` を含むディレクトリは自動で追加) |
-| `c42check.runArgs` | `[]` | 動的チェックとデバッグの実行引数 |
-| `c42check.useMakeCheckTarget` | `false` | Makefile に `check` ターゲットがあれば、scan-build は `make` の代わりに `make check` を包んで実行 |
-| `c42check.ignoreMakefile` | `false` | Makefile があっても使わず、`compile.*` の引数と `.c` の一覧でビルドして検証する (scan-build / compile_commands.json。Makefile の検査 (III.11) は skip) |
-| `c42check.failFast` | `"stage"` | `"stage"`: 段階内は全項目を実行 / `"step"`: 最初の失敗で止める |
-| `c42check.minFreeSpaceMB` | `200` | 空き容量の下限 (MB)。下回ると警告して中断 |
-| `c42check.workDirMaxMB` | `100` | `.42check/` の上限 (MB)。超えると警告して中断 |
-| `c42check.runTimeoutSec` | `10` | 動的チェックの実行の制限時間 (秒。valgrind は 5 倍)。超過は skip |
-| `c42check.staticTimeoutSec` | `120` | 静的チェック各ツールの制限時間 (秒) |
-| `c42check.norminette.ignoreParameterErrors` | `false` | norminette の、関数の引数についての指摘 (`TOO_MANY_ARGS` など) を結果から除く |
-| `c42check.normExclude` | `["main.c"]` | norminette と c_formatter_42 の対象から外すファイル (ファイル名 / 相対パスの glob) |
-| `c42check.mainFile` | `""` | main を持たない課題用のテスト main |
-| `c42check.compdb.includeMain` | `true` | `mainFile` を `compile_commands.json` に含めるか |
-| `c42check.compdb.source` | `"auto"` | `compile_commands.json` の生成方式 |
-| `c42check.debug.sanitizer` | `false` | デバッグ用ビルドに ASan + UBSan を付ける |
-| `c42check.proto.header` | `""` | プロトタイプを反映するヘッダ (空ならマーカーのあるヘッダを自動選択)。View の「反映先のヘッダ」から選んで保存できる |
-| `c42check.proto.sourceDir` | `""` | 関数定義を抽出する `.c` のディレクトリ (空なら `targetDir`) |
-| `c42check.proto.syncOnRun` | `false` | 実行時 (段階 0) にプロトタイプを同期 (プレビューなし) |
-| `c42check.proto.syncOnSave` | `false` | `.c` の保存時にプロトタイプを同期 (プレビューなし) |
-| `c42check.proto.skipExisting` | `true` | マーカーの外で手書きの宣言がある関数は、ブロックに入れない |
-| `c42check.proto.updateExisting` | `true` | マーカーの外の手書きの宣言が、ソースと型 (戻り値・引数) で食い違うときは、ソースの型に書き換える |
-| `c42check.debug.cwd` / `.terminal` | `${workspaceFolder}` / `integrated` | launch 構成に反映 |
-| `c42check.checks` | (全項目。TSan / MSan / CBMC / Frama-C のみ `false`) | チェックボックスの状態 (View から変更すると保存される) |
+| `c42checker.targetDir` | `.` | 検証対象のディレクトリ |
+| `c42checker.includePaths` | `[]` | 追加の include path (`.h` を含むディレクトリは自動で追加) |
+| `c42checker.runArgs` | `[]` | 動的チェックとデバッグの実行引数 |
+| `c42checker.useMakeCheckTarget` | `false` | Makefile に `check` ターゲットがあれば、scan-build は `make` の代わりに `make check` を包んで実行 |
+| `c42checker.ignoreMakefile` | `false` | Makefile があっても使わず、`compile.*` の引数と `.c` の一覧でビルドして検証する (scan-build / compile_commands.json。Makefile の検査 (III.11) は skip) |
+| `c42checker.failFast` | `"stage"` | `"stage"`: 段階内は全項目を実行 / `"step"`: 最初の失敗で止める |
+| `c42checker.minFreeSpaceMB` | `200` | 空き容量の下限 (MB)。下回ると警告して中断 |
+| `c42checker.workDirMaxMB` | `100` | `.42check/` の上限 (MB)。超えると警告して中断 |
+| `c42checker.runTimeoutSec` | `10` | 動的チェックの実行の制限時間 (秒。valgrind は 5 倍)。超過は skip |
+| `c42checker.staticTimeoutSec` | `120` | 静的チェック各ツールの制限時間 (秒) |
+| `c42checker.norminette.ignoreParameterErrors` | `false` | norminette の、関数の引数についての指摘 (`TOO_MANY_ARGS` など) を結果から除く |
+| `c42checker.normExclude` | `["main.c"]` | norminette と c_formatter_42 の対象から外すファイル (ファイル名 / 相対パスの glob) |
+| `c42checker.mainFile` | `""` | main を持たない課題用のテスト main |
+| `c42checker.compdb.includeMain` | `true` | `mainFile` を `compile_commands.json` に含めるか |
+| `c42checker.compdb.source` | `"auto"` | `compile_commands.json` の生成方式 |
+| `c42checker.debug.sanitizer` | `false` | デバッグ用ビルドに ASan + UBSan を付ける |
+| `c42checker.proto.header` | `""` | プロトタイプを反映するヘッダ (空ならマーカーのあるヘッダを自動選択)。View の「反映先のヘッダ」から選んで保存できる |
+| `c42checker.proto.sourceDir` | `""` | 関数定義を抽出する `.c` のディレクトリ (空なら `targetDir`) |
+| `c42checker.proto.syncOnRun` | `false` | 実行時 (段階 0) にプロトタイプを同期 (プレビューなし) |
+| `c42checker.proto.syncOnSave` | `false` | `.c` の保存時にプロトタイプを同期 (プレビューなし) |
+| `c42checker.proto.skipExisting` | `true` | マーカーの外で手書きの宣言がある関数は、ブロックに入れない |
+| `c42checker.proto.updateExisting` | `true` | マーカーの外の手書きの宣言が、ソースと型 (戻り値・引数) で食い違うときは、ソースの型に書き換える |
+| `c42checker.debug.cwd` / `.terminal` | `${workspaceFolder}` / `integrated` | launch 構成に反映 |
+| `c42checker.checks` | (全項目。TSan / MSan / CBMC / Frama-C のみ `false`) | チェックボックスの状態 (View から変更すると保存される) |
 
 `.42check/` は実行のたびに削除して作り直し、`.gitignore` に自動で追記します。
+
+## 旧名称 (`c42check`) からの移行
+
+名称を、リポジトリ名に合わせて **c42checker** にしました。設定キー・コマンド ID・View・task の種類の接頭辞が、`c42check.*` から `c42checker.*` に変わっています。
+旧名称のままでは動きません。次を書き換えてください。
+
+| 場所 | 旧 | 新 |
+|---|---|---|
+| `.vscode/settings.json` の設定キー | `"c42check.targetDir"` など | `"c42checker.targetDir"` など |
+| `.vscode/tasks.json` の task の種類・label | `"type": "c42check"`、`c42check: pre-debug` | `"type": "c42checker"`、`c42checker: pre-debug` |
+| `.vscode/launch.json` | `preLaunchTask: "c42check: pre-debug"`、`${command:c42check.runArgs}` | `"c42checker: pre-debug"`、`${command:c42checker.runArgs}` |
+
+生成済みの launch.json / tasks.json は、コマンド「c42checker: launch.json / tasks.json を生成・更新」では**既存の項目を変更しない**ため、手で書き換えるか、旧い項目を消してから生成し直してください。
+作業用ディレクトリ `.42check/` の名前は変えていません (`.gitignore` の記述もそのままです)。
 
 ## 動作確認用のサンプル
 
@@ -414,7 +428,7 @@ code --install-extension llvm-vs-code-extensions.vscode-clangd
 | `samples/norm-ng` | 動作は正常だが norm 違反 | 段階 1 の norminette で fail、段階 2 は実行されない |
 | `samples/bug-asan` | 実行時の heap-buffer-overflow (静的解析では見えにくい) | 段階 1 は pass、段階 2 で ASan と valgrind が fail |
 | `samples/bug-leak` | メモリリーク + 閉じていない fd | 段階 1 の clang-tidy と scan-build が fail (段階 2 は実行されない) |
-| `samples/lib-ok` | main の無いライブラリ課題。`tests/test_main.c` を `c42check.mainFile` で指定 | 動的チェックとデバッグ用ビルドまで pass |
+| `samples/lib-ok` | main の無いライブラリ課題。`tests/test_main.c` を `c42checker.mainFile` で指定 | 動的チェックとデバッグ用ビルドまで pass |
 | `samples/bug-tsan` | 2 スレッドが同じ変数を同期なしで更新 (データ競合) | TSan だけが fail (ASan / MSan は pass) |
 | `samples/bug-msan` | 初期化していないヒープ領域の読み取り | MSan が fail |
 | `samples/proto-ok` | `src/` 以下の複数ファイル (static 関数・関数ポインタ引数・`unsigned long long` を含む) と、マーカーつきのヘッダ `includes/proj.h` | 「ヘッダにプロトタイプを反映」で、norminette を通るヘッダができ、プロジェクトがコンパイルできる |
