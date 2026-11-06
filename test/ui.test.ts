@@ -86,6 +86,26 @@ test('実行中の二重起動は拒否する', async () => {
   cleanup();
 });
 
+test('単一実行: only を渡すと、チェックの状態に関係なく、その項目だけを実行する', async () => {
+  const { runner, cleanup } = setup('ok');
+  const code = await runner.run('check', undefined, ['norminette']);
+  assert.equal(code, 0);
+  assert.equal(runner.statusOf('norminette'), 'pass');
+  assert.equal(runner.statusOf('asanUbsan'), 'pending', '既定でチェック済みの項目も、実行しない');
+  assert.equal(runner.statusOf('warnings'), 'pending');
+  cleanup();
+});
+
+test('単一実行: チェックを外している項目 (TSan) も実行できる。前の失敗も引きずらない', async () => {
+  const { runner, cleanup } = setup('norm-ng');
+  assert.equal(await runner.run('check', undefined, ['norminette']), 1);
+  assert.equal(runner.statusOf('norminette'), 'fail');
+  assert.equal(await runner.run('check', undefined, ['warnings']), 0, 'norminette が失敗するソースでも、警告強化ビルドだけなら通る');
+  assert.equal(runner.statusOf('norminette'), 'pending', '前回の結果は入れ替わる');
+  assert.equal(runner.statusOf('warnings'), 'pass');
+  cleanup();
+});
+
 test('不明な mode の task は解決しない', () => {
   const { runner, cleanup } = setup('ok');
   const p = new CheckTaskProvider(runner);

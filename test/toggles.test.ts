@@ -24,7 +24,11 @@ const group = (t: CheckTree, id: string) => t.getChildren().find((n) => n.kind =
 const settingItems = (t: CheckTree) => t.getChildren(group(t, 'gs')).map((n) => ({ node: n, item: t.getTreeItem(n) }));
 
 const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')) as {
-  contributes: { configuration: { properties: Record<string, { default: unknown; type: string }> }; commands: { command: string }[] };
+  contributes: {
+    configuration: { properties: Record<string, { default: unknown; type: string }> };
+    commands: { command: string }[];
+    menus: Record<string, { command: string; when?: string; group?: string }[]>;
+  };
 };
 
 test('「設定」グループに、真偽値の設定 8 つが並ぶ (5 つは指定されたもの + include の削除と二重指定の検出 + Makefile を無視する)', () => {
@@ -128,4 +132,16 @@ test('トグルの対応表: すべてのキーが package.json の設定に存�
     assert.equal(prop.type === 'boolean' ? typeof t.toConfig(true) === 'boolean' : typeof t.toConfig(true) === 'string', true, t.id);
     assert.equal(t.fromConfig(prop.default), t.defaultValue, `${t.id}: 既定値が package.json と一致`);
   }
+});
+
+test('各検証項目に「この項目だけ実行」のボタンがある (ツリーの項目 → コマンド。実行中は出さない)', () => {
+  const t = tree();
+  for (const g of ['g1', 'g2', 'g3']) {
+    for (const n of t.getChildren(group(t, g))) assert.equal(t.getTreeItem(n).contextValue, 'step', '項目の contextValue が menus の条件と一致');
+  }
+  assert.ok(pkg.contributes.commands.some((c) => c.command === 'c42check.runStep'));
+  const menus = pkg.contributes.menus['view/item/context'].filter((m) => m.command === 'c42check.runStep');
+  assert.ok(menus.some((m) => m.group?.startsWith('inline')), 'ホバーで出るボタン');
+  assert.ok(menus.every((m) => /viewItem == step/.test(m.when ?? '') && /!c42check\.running/.test(m.when ?? '')));
+  assert.equal(t.getTreeItem(t.getChildren(group(t, 'gp'))[0]).contextValue, undefined, 'ヘッダの反映は、項目自体のクリックで単独実行できる (ボタンは不要)');
 });

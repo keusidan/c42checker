@@ -88,6 +88,7 @@ export class CheckTree implements vscode.TreeDataProvider<Node>, vscode.Disposab
 
     const item = new vscode.TreeItem(step.label, vscode.TreeItemCollapsibleState.None);
     item.id = node.id;
+    item.contextValue = 'step'; // package.json の view/item/context で、「この項目だけ実行」のボタンを出す条件
     item.checkboxState = readChecks()[node.id]
       ? vscode.TreeItemCheckboxState.Checked
       : vscode.TreeItemCheckboxState.Unchecked;

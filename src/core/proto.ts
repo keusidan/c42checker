@@ -154,12 +154,87 @@ export function renderBlock(input: ProtoEntry[], minNameCol = 0): RenderedBlock 
   const lines: string[] = [];
   const tooLong: string[] = [];
   for (const e of entries) {
-    const tabs = '\t'.repeat(Math.ceil((nameCol - visualWidth(e.base)) / TAB_WIDTH));
-    const line = `${e.base}${tabs}${e.stars}${e.name}${e.params};`;
+    const line = declLine(e, nameCol);
     if (visualWidth(line) > MAX_COLUMNS) tooLong.push(e.name);
     lines.push(line);
   }
   return { lines, tooLong };
+}
+
+/** 1 つの宣言 (1 行)。関数名 (の `*`) は nameCol 桁から始める。型が桁より広いときも、タブは 1 つ以上入れる。 */
+function declLine(e: ProtoEntry, nameCol: number): string {
+  const tabs = '\t'.repeat(Math.max(1, Math.ceil((nameCol - visualWidth(e.base)) / TAB_WIDTH)));
+  return `${e.base}${tabs}${e.stars}${e.name}${e.params};`;
+}
+
+/* ───────────── 手書きの宣言を、ソースの型に合わせる ───────────── */
+
+const TYPE_KEYWORDS = new Set(['void', 'char', 'short', 'int', 'long', 'float', 'double', 'unsigned', 'signed', '_Bool']);
+const TAG_WORDS = new Set(['struct', 'union', 'enum', 'const', 'volatile', 'restrict']);
+
+/** 引数 1 つから、名前を取り除いた型だけを取り出す (`t_list *lst` → `t_list*`、`void *(*f)(void *)` → `void*(*)(void*)`)。 */
+function typeOfParam(param: string): string {
+  let s = param.replace(/\s+/g, ' ').trim();
+  if (s === '...') return s;
+  s = s.replace(/\(\s*(\*+)\s*[A-Za-z_]\w*\s*\)/g, '($1)').replace(/\[[^\]]*\]/g, '[]');
+  const m = /^(.*[\s*])([A-Za-z_]\w*)((?:\[\])*)$/.exec(s);
+  if (m && !TYPE_KEYWORDS.has(m[2]) && m[1].split(/[\s*]+/).some((w) => w !== '' && !TAG_WORDS.has(w))) s = m[1] + m[3];
+  return s.replace(/\s+/g, ''); // 空白の違い (`char *` / `char*`) は型の違いではない
+}
+
+/** 戻り値の型と、引数の型 (名前と空白は無視)。宣言どうしの比較に使う。 */
+export function typeKey(base: string, stars: string, params: string): string {
+  const inner = params.slice(1, -1).trim();
+  const types = inner === '' || inner === 'void' ? 'void' : splitTopLevel(inner).map(typeOfParam).join(',');
+  return `${base.replace(/\s+/g, '')}${stars}|${types}`;
+}
+
+export interface DeclEdit {
+  name: string;
+  /** 書き換える範囲 (1 始まり、両端を含む) */
+  line: number;
+  end: number;
+  before: string;
+  after: string;
+}
+
+/**
+ * マーカーの外の手書きの宣言のうち、ソースの定義と型 (戻り値・引数の型) が食い違うものを、ソースの型に書き換える案。
+ * 安全のため、コメント・インデント・extern / static / inline を含む宣言や、1 行に複数の宣言がある行は触らない。
+ * 関数名の桁は、元の宣言の桁を保つ。
+ */
+export function alignExisting(lines: string[], existing: CtagsFunction[], entries: ProtoEntry[]): DeclEdit[] {
+  const byName = new Map(entries.map((e) => [e.name, e]));
+  const edits: DeclEdit[] = [];
+  for (const f of existing) {
+    const want = byName.get(f.name);
+    const rt = normalizeReturnType(f.typeref);
+    const params = normalizeParams(f.signature);
+    if (!want || !rt || params === undefined) continue;
+    if (typeKey(rt.base, rt.stars, params) === typeKey(want.base, want.stars, want.params)) continue;
+
+    const end = f.end ?? f.line;
+    const span = lines.slice(f.line - 1, end);
+    const first = span[0] ?? '';
+    const text = span.join('\n');
+    const at = first.indexOf(f.name);
+    if (at < 0 || /^\s|^#/.test(first) || /\/\/|\/\*|\*\//.test(text)) continue;
+    const prefix = first.slice(0, at);
+    if (!/^[A-Za-z_][\w\s*]*$/.test(prefix) || /\b(extern|static|inline|typedef)\b/.test(prefix)) continue;
+    if (!text.trimEnd().endsWith(';') || (text.match(/;/g) ?? []).length !== 1) continue;
+
+    const nameCol = visualWidth(prefix.replace(/\*+$/, ''));
+    edits.push({ name: f.name, line: f.line, end, before: text.replace(/\s+/g, ' ').trim(), after: declLine(want, nameCol) });
+  }
+  return edits;
+}
+
+/** alignExisting の案を、ヘッダの文字列に適用する (行番号がずれないよう、後ろから)。 */
+export function applyDeclEdits(text: string, edits: DeclEdit[]): string {
+  if (edits.length === 0) return text;
+  const lines = text.split(/\r?\n/);
+  for (const e of [...edits].sort((a, b) => b.line - a.line)) lines.splice(e.line - 1, e.end - e.line + 1, e.after);
+  return lines.join(eolOf(text));
 }
 
 /* ───────────── ヘッダの書き換え ───────────── */
@@ -246,6 +321,8 @@ export type SyncPlan =
       count: number;
       /** マーカーの外で既に宣言されているため、ブロックに入れなかった件数 */
       skippedExisting: number;
+      /** マーカーの外の手書きの宣言のうち、ソースの型に合わせて書き換える案 (c42check.proto.updateExisting) */
+      updatedExisting: DeclEdit[];
       excluded: number;
       tooLong: string[];
       changed: boolean;
@@ -259,6 +336,7 @@ export type SyncPlan =
       insertion: Insertion;
       count: number;
       skippedExisting: number;
+      updatedExisting: DeclEdit[];
       tooLong: string[];
       log: string;
     };
@@ -362,8 +440,13 @@ export async function planSync(ctx: Context, opts: PlanOptions = {}): Promise<Sy
 
   const entries = ctx.settings.protoSkipExisting ? built.entries.filter((e) => !declared.has(e.name)) : built.entries;
   const skippedExisting = built.entries.length - entries.length;
+  // 手書きの宣言が、ソースの型と食い違っていれば、ソースの型に合わせる (ブロックの外側の書き換え)
+  const updatedExisting = ctx.settings.protoUpdateExisting ? alignExisting(srcLines, existing, built.entries) : [];
+  const baseText = applyDeclEdits(oldText, updatedExisting);
   const { lines, tooLong } = renderBlock(entries, minNameCol);
-  const rep = replaceBlock(oldText, lines);
+  for (const e of updatedExisting) if (visualWidth(e.after) > MAX_COLUMNS) tooLong.push(e.name);
+  const log = run.log + (updatedExisting.length > 0 ? `\n手書きの宣言をソースの型に合わせます (${updatedExisting.length} 件):\n${updatedExisting.map((e) => `  ${path.relative(ctx.root, header)}:${e.line} ${e.before}\n    → ${e.after}`).join('\n')}\n` : '');
+  const rep = replaceBlock(baseText, lines);
   if (rep.ok) {
     return {
       kind: 'ready',
@@ -372,15 +455,16 @@ export async function planSync(ctx: Context, opts: PlanOptions = {}): Promise<Sy
       newText: rep.text,
       count: entries.length,
       skippedExisting,
+      updatedExisting,
       excluded: built.excluded,
       tooLong,
       changed: rep.text !== oldText,
-      log: run.log,
+      log,
     };
   }
   if (rep.reason === 'no-markers') {
-    const insertion = proposeInsertion(oldText, lines);
-    return { kind: 'needs-markers', header, oldText, newText: insertion.text, insertion, count: entries.length, skippedExisting, tooLong, log: run.log };
+    const insertion = proposeInsertion(baseText, lines);
+    return { kind: 'needs-markers', header, oldText, newText: insertion.text, insertion, count: entries.length, skippedExisting, updatedExisting, tooLong, log };
   }
   return { kind: 'error', reason: rep.message, hint: `${MARKER_BEGIN} と ${MARKER_END} を 1 組だけ残してください` };
 }
@@ -469,7 +553,7 @@ export async function syncAuto(ctx: Context, opts: PlanOptions = {}): Promise<Au
       const norm = await checkHeaderNorm(ctx, plan.header);
       return {
         status: 'updated',
-        message: `${path.relative(ctx.root, plan.header)} に ${plan.count} 件を反映しました${norm.status === 'fail' ? ' (norminette が指摘しています)' : ''}`,
+        message: `${path.relative(ctx.root, plan.header)} に ${plan.count} 件を反映しました${plan.updatedExisting.length > 0 ? ` (手書きの宣言 ${plan.updatedExisting.length} 件をソースの型に合わせました)` : ''}${norm.status === 'fail' ? ' (norminette が指摘しています)' : ''}`,
         header: plan.header,
         count: plan.count,
         norm,

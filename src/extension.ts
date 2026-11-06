@@ -3,6 +3,8 @@ import * as vscode from 'vscode';
 import { ensureGenerated, STATE_DIR } from './core/compdb';
 import { createContext } from './core/context';
 import { shellQuoteArgs } from './core/launchConfig';
+import { STEPS } from './core/steps';
+import { STEP_IDS, type StepId } from './core/types';
 import { dirSize, resetWorkDir } from './core/workdir';
 import { readSettings, workspaceRoot } from './ui/config';
 import { Problems } from './ui/diagnostics';
@@ -13,6 +15,20 @@ import { PROPOSAL_SCHEME, ProtoSync } from './ui/protoCommand';
 import { Runner } from './ui/runner';
 import { CheckTaskProvider } from './ui/taskProvider';
 import { CheckTree } from './ui/tree';
+
+/** 「この項目だけ実行」の引数 (ツリーの項目 / 項目の id) から、項目の id を取り出す。 */
+function stepIdOf(arg: unknown): StepId | undefined {
+  const id = typeof arg === 'string' ? arg : (arg as { kind?: string; id?: string } | undefined)?.kind === 'step' ? (arg as { id: string }).id : undefined;
+  return STEP_IDS.find((s) => s === id);
+}
+
+async function pickStep(): Promise<StepId | undefined> {
+  const pick = await vscode.window.showQuickPick(
+    STEPS.map((s) => ({ label: s.label, description: `段階 ${s.stage}`, detail: s.note, id: s.id })),
+    { title: '実行する項目を選んでください (チェックの状態に関係なく、この項目だけ実行します)', matchOnDetail: true },
+  );
+  return pick?.id;
+}
 
 export function activate(context: vscode.ExtensionContext): void {
   const outputs = new Outputs();
@@ -46,6 +62,10 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.tasks.registerTaskProvider(CheckTaskProvider.type, new CheckTaskProvider(runner)),
 
     reg('c42check.run', () => runner.run('check')),
+    reg('c42check.runStep', async (arg?: unknown) => {
+      const id = stepIdOf(arg) ?? (await pickStep());
+      if (id) await runner.run('check', undefined, [id]);
+    }),
     reg('c42check.cancel', () => runner.cancel()),
     reg('c42check.refresh', () => tree.refresh()),
     reg('c42check.syncPrototypes', () => proto.runCommand()),

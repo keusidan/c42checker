@@ -63,6 +63,7 @@ export function readSettings(): Settings {
     protoSyncOnRun: c.get<boolean>('proto.syncOnRun') ?? d.protoSyncOnRun,
     protoSyncOnSave: c.get<boolean>('proto.syncOnSave') ?? d.protoSyncOnSave,
     protoSkipExisting: c.get<boolean>('proto.skipExisting') ?? d.protoSkipExisting,
+    protoUpdateExisting: c.get<boolean>('proto.updateExisting') ?? d.protoUpdateExisting,
     norminetteIgnoreParameterErrors: c.get<boolean>('norminette.ignoreParameterErrors') ?? d.norminetteIgnoreParameterErrors,
     normExclude: strings(c.get<unknown>('normExclude'), d.normExclude),
     normExtraDisable: strings(c.get<unknown>('normExtra.disable'), d.normExtraDisable),

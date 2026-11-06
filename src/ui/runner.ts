@@ -45,8 +45,11 @@ export class Runner implements vscode.Disposable {
     this.abort?.abort();
   }
 
-  /** 終了コード (0: 成功 / 1: 失敗・中止) を返す。task の終了コードにそのまま使う。 */
-  async run(mode: RunMode, sink?: Sink): Promise<number> {
+  /**
+   * 終了コード (0: 成功 / 1: 失敗・中止) を返す。task の終了コードにそのまま使う。
+   * only を渡すと、チェックの状態に関係なく、その項目だけを実行する (準備 (段階 0) は行う)。
+   */
+  async run(mode: RunMode, sink?: Sink, only?: StepId[]): Promise<number> {
     const root = workspaceRoot();
     if (!root) {
       void vscode.window.showErrorMessage('42 Check: フォルダを開いてから実行してください。');
@@ -76,7 +79,7 @@ export class Runner implements vscode.Disposable {
       sink?.line(text);
     };
     const settings = readSettings();
-    const selected = mode === 'build-debug' ? [] : selectedSteps();
+    const selected = mode === 'build-debug' ? [] : (only ?? selectedSteps());
     say(`42 Check (${mode}) — failFast: ${settings.failFast}, 対象: ${selected.join(', ') || '(なし)'}`);
 
     let report: PipelineReport | undefined;

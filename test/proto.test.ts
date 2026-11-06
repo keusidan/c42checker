@@ -10,6 +10,8 @@ import { runPipeline } from '../src/core/pipeline';
 import {
   MARKER_BEGIN,
   MARKER_END,
+  alignExisting,
+  applyDeclEdits,
   buildEntries,
   normalizeParams,
   normalizeReturnType,
@@ -18,6 +20,7 @@ import {
   renderBlock,
   replaceBlock,
   syncAuto,
+  typeKey,
 } from '../src/core/proto';
 import { sampleContext } from './helpers';
 
@@ -468,4 +471,125 @@ test('マーカーが無いヘッダ: 手書きの宣言は全て「既存」と
   }
   assert.equal(read(f), before);
   cleanup();
+});
+
+/* ───────── 手書きの宣言を、ソースの型に合わせる (proto.updateExisting) ───────── */
+
+test('型の比較: 引数の名前と空白の違いは無視し、型の違いは見分ける', () => {
+  const key = (base: string, stars: string, params: string) => typeKey(base, stars, params);
+  assert.equal(key('size_t', '', '(const char *s)'), key('size_t', '', '(const char *)'), '名前の有無');
+  assert.equal(key('char', '*', '(const char *s)'), key('char', '*', '(const char* str)'), '名前と空白');
+  assert.equal(key('int', '', '(void)'), key('int', '', '(void)'));
+  assert.equal(key('int', '', '(unsigned int a, long b)'), key('int', '', '(unsigned int, long)'), 'unsigned int の int を名前と取り違えない');
+  assert.equal(key('t_list', '*', '(void *(*f)(void *), int n)'), key('t_list', '*', '(void *(*)(void *), int)'), '関数ポインタの名前');
+  assert.equal(key('int', '', '(struct s_list *lst)'), key('int', '', '(struct s_list *)'), 'struct の タグ名を名前と取り違えない');
+  assert.notEqual(key('int', '', '(char *s)'), key('int', '', '(const char *s)'), 'const の違い');
+  assert.notEqual(key('int', '', '(int a)'), key('long', '', '(int a)'), '戻り値の型');
+  assert.notEqual(key('int', '', '(int a)'), key('int', '*', '(int a)'), '戻り値のポインタ');
+  assert.notEqual(key('int', '', '(int a, int b)'), key('int', '', '(int a)'), '引数の数');
+  assert.notEqual(key('int', '', '(struct s_a *p)'), key('int', '', '(struct s_b *p)'), 'struct のタグ');
+});
+
+test('alignExisting: 型が違う宣言だけを、元の桁を保って書き換える (複数行の宣言は 1 行にまとめる)', () => {
+  const lines = ['//part1', 'int\t\tft_a(char *s);', 'char\t*ft_b(const char *s,', '\t\t\tint n);', 'void\tft_c(void);', 'int\t\tft_same(int x);'];
+  const want = (name: string, base: string, stars: string, params: string) => ({ name, file: 'x.c', base, stars, params });
+  const existing = [
+    { name: 'ft_a', file: 'h', line: 2, end: 2, typeref: 'typename:int', signature: '(char * s)', isStatic: false },
+    { name: 'ft_b', file: 'h', line: 3, end: 4, typeref: 'typename:char *', signature: '(const char * s,int n)', isStatic: false },
+    { name: 'ft_c', file: 'h', line: 5, end: 5, typeref: 'typename:void', signature: '(void)', isStatic: false },
+    { name: 'ft_same', file: 'h', line: 6, end: 6, typeref: 'typename:int', signature: '(int x)', isStatic: false },
+  ];
+  const edits = alignExisting(lines, existing, [
+    want('ft_a', 'size_t', '', '(const char *s)'),
+    want('ft_b', 'char', '*', '(const char *s, size_t n)'),
+    want('ft_c', 'void', '', '(void)'),
+    want('ft_same', 'int', '', '(int y)'),
+  ]);
+  assert.deepEqual(edits.map((e) => e.name), ['ft_a', 'ft_b'], '型が同じ ft_c と、名前だけ違う ft_same は触らない');
+  assert.equal(edits[0].after, 'size_t\tft_a(const char *s);', '桁 (8) を保つ (size_t は 6 桁なので、タブは 1 つ)');
+  assert.equal(edits[1].after, 'char\t*ft_b(const char *s, size_t n);', '複数行が 1 行になる');
+  assert.deepEqual([edits[1].line, edits[1].end], [3, 4]);
+  assert.equal(applyDeclEdits(lines.join('\n'), edits), ['//part1', 'size_t\tft_a(const char *s);', 'char\t*ft_b(const char *s, size_t n);', 'void\tft_c(void);', 'int\t\tft_same(int x);'].join('\n'));
+});
+
+test('alignExisting: コメント・extern・インデントがある宣言や、1 行に複数の宣言は触らない', () => {
+  const lines = ['int\tft_a(char *s); // memo', 'extern int\tft_b(char *s);', '  int\tft_c(char *s);', 'int\tft_d(char *s); int\tft_e(char *s);'];
+  const mk = (name: string, line: number) => ({ name, file: 'h', line, end: line, typeref: 'typename:int', signature: '(char * s)', isStatic: false });
+  const existing = ['ft_a', 'ft_b', 'ft_c', 'ft_d', 'ft_e'].map((n, i) => mk(n, Math.min(i + 1, 4)));
+  const entries = existing.map((e) => ({ name: e.name, file: 'x.c', base: 'long', stars: '', params: '(char *s)' }));
+  assert.deepEqual(alignExisting(lines, existing, entries), []);
+});
+
+const STALE_DECLS = 'int\t\tft_strlen(char *s);\nchar\t*ft_strdup(const char *s, int extra);\n';
+
+test('手書きの宣言の型がソースと違えば、ソースの型に書き換える (名前だけ違う宣言は、そのまま)', async (t) => {
+  const { ctx, dir, cleanup } = sampleContext('proto-ok');
+  withHandWrittenDecls(dir);
+  const f = headerOf(dir);
+  fs.writeFileSync(f, read(f).replace(HAND_WRITTEN, STALE_DECLS.replace('(const char *s, int extra)', '(const char *str)')));
+  const plan = await planSync(ctx);
+  if (plan.kind === 'skip') return t.skip('ctags が無い');
+  assert.equal(plan.kind, 'ready');
+  const ready = plan as Extract<typeof plan, { kind: 'ready' }>;
+  assert.deepEqual(ready.updatedExisting.map((e) => e.name), ['ft_strlen'], 'ft_strdup は引数の名前が違うだけ');
+  assert.equal(read(f), ready.oldText, 'plan は書き込まない');
+
+  const r = await syncAuto(ctx);
+  assert.equal(r.status, 'updated', r.message);
+  assert.match(r.message, /手書きの宣言 1 件をソースの型に合わせました/);
+  const h = read(f);
+  assert.ok(h.includes('size_t\tft_strlen(const char *s);'), h);
+  assert.ok(!h.includes('int\t\tft_strlen(char *s)'));
+  assert.ok(h.includes('char\t*ft_strdup(const char *str);'), '名前だけの違いは書き換えない');
+  assert.equal((h.match(/ft_strlen/g) ?? []).length, 1, '重複しない');
+  assert.equal((await syncAuto(ctx)).status, 'unchanged', '冪等');
+  cleanup();
+});
+
+test('手書きの宣言が複数行でも、ソースの型に合わせて 1 つにまとめる', async (t) => {
+  const { ctx, dir, cleanup } = sampleContext('proto-ok');
+  withHandWrittenDecls(dir);
+  const f = headerOf(dir);
+  fs.writeFileSync(f, read(f).replace('char\t*ft_strdup(const char *s);', 'char\t*ft_strdup(char *s,\n\t\t\tint extra);'));
+  const r = await syncAuto(ctx);
+  if (r.status === 'skip') return t.skip('ctags が無い');
+  assert.equal(r.status, 'updated', r.message);
+  const h = read(f);
+  assert.ok(h.includes('char\t*ft_strdup(const char *s);'), h);
+  assert.ok(!h.includes('int extra'));
+  cleanup();
+});
+
+test('proto.updateExisting が OFF なら、手書きの宣言は書き換えない', async (t) => {
+  const { ctx, dir, cleanup } = sampleContext('proto-ok', { protoUpdateExisting: false });
+  withHandWrittenDecls(dir);
+  const f = headerOf(dir);
+  fs.writeFileSync(f, read(f).replace(HAND_WRITTEN, STALE_DECLS));
+  const r = await syncAuto(ctx);
+  if (r.status === 'skip') return t.skip('ctags が無い');
+  assert.ok(read(f).includes(STALE_DECLS), '手書きは触らない');
+  cleanup();
+});
+
+test('マーカーが無いヘッダでも、手書きの宣言の型の合わせ方を提案に含める (書き込みはしない)', async (t) => {
+  const { ctx, dir, cleanup } = sampleContext('proto-ok');
+  const f = headerOf(dir);
+  fs.writeFileSync(f, read(f).replace(/\/\* ---- auto prototypes begin[\s\S]*end ---- \*\/\n/, STALE_DECLS));
+  const before = read(f);
+  const plan = await planSync(ctx);
+  if (plan.kind === 'skip') return t.skip('ctags が無い');
+  assert.equal(plan.kind, 'needs-markers');
+  const p = plan as Extract<typeof plan, { kind: 'needs-markers' }>;
+  assert.ok(p.updatedExisting.some((e) => e.name === 'ft_strlen'));
+  assert.ok(p.newText.includes('size_t\tft_strlen(const char *s);'));
+  assert.equal(read(f), before);
+  cleanup();
+});
+
+test('proto.updateExisting: 既定は ON (DEFAULT_SETTINGS と package.json が一致)', () => {
+  assert.equal(DEFAULT_SETTINGS.protoUpdateExisting, true);
+  const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')) as {
+    contributes: { configuration: { properties: Record<string, { default: unknown }> } };
+  };
+  assert.equal(pkg.contributes.configuration.properties['c42check.proto.updateExisting'].default, true);
 });

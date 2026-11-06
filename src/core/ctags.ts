@@ -10,6 +10,8 @@ export interface CtagsFunction {
   typeref?: string;
   /** ctags の signature (例: `(const char * s,int n)`)。空白は ctags が正規化している */
   signature?: string;
+  /** 宣言・定義の最後の行 (複数行にわたる宣言の範囲を知るため)。ctags が出せたときだけ */
+  end?: number;
   isStatic: boolean;
 }
 
@@ -83,6 +85,7 @@ export function parseTags(output: string, cwd: string, kinds: readonly string[] 
       if (fld === 'file:') f.isStatic = true; // file: = 定義したファイルの中だけで見える = static
       else if (fld.startsWith('typeref:')) f.typeref = fld.slice('typeref:'.length);
       else if (fld.startsWith('signature:')) f.signature = fld.slice('signature:'.length);
+      else if (fld.startsWith('end:')) f.end = Number.parseInt(fld.slice('end:'.length), 10) || undefined;
     }
     funcs.push(f);
   }
@@ -109,7 +112,7 @@ export async function runCtags(
     '--languages=C',
     '--langmap=C:.c.h',
     `--kinds-C=${kinds}`,
-    '--fields=+KSt',
+    '--fields=+KSte',
     '--excmd=number',
     '--sort=no',
     '-f',

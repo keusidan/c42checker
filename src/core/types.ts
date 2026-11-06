@@ -72,6 +72,8 @@ export interface Settings {
   protoSyncOnSave: boolean;
   /** 同じ関数がマーカーの外 (手書き) で既に宣言されていれば、ブロックには入れない */
   protoSkipExisting: boolean;
+  /** マーカーの外の手書きの宣言も、ソースの型 (戻り値・引数の型) に合わせて書き換える */
+  protoUpdateExisting: boolean;
   /** コンパイル引数 (VS Code の settings.json の c42check.compile.* / clangTidy.* / valgrind.*) */
   /** true なら、norminette の関数の引数についての指摘 (TOO_MANY_ARGS など) を結果から除く */
   norminetteIgnoreParameterErrors: boolean;
@@ -136,6 +138,7 @@ export const DEFAULT_SETTINGS: Settings = {
   protoSyncOnRun: false,
   protoSyncOnSave: false,
   protoSkipExisting: true,
+  protoUpdateExisting: true,
   norminetteIgnoreParameterErrors: false,
   normExclude: ['main.c'],
   normExtraDisable: [],

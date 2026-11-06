@@ -300,6 +300,14 @@ code --install-extension llvm-vs-code-extensions.vscode-clangd
 | 使っていない #include を削除 | `c42check.normExtra.removeUnusedIncludes` |
 | include の二重指定を検出 | `c42check.normExtra.detectDuplicateIncludes` |
 
+### 項目を 1 つだけ実行する
+
+チェックの状態に関係なく、**1 つの項目だけ**を実行できます (準備 (段階 0) は行います)。
+- View の各項目にマウスを載せると出る ▷ ボタン、または右クリックの「この項目だけ実行」
+- コマンドパレットの「42 Check: この項目だけ実行」(項目を選びます)
+
+結果の表示 (View のアイコン・Problems・Output) は、その実行の分に入れ替わります。「ヘッダにプロトタイプを反映」は、もともと単独のコマンドです (View の「ヘッダ」グループの項目をクリック)。
+
 ### ヘッダにプロトタイプを反映
 
 `.c` の関数定義からプロトタイプを作り、ヘッダの**マーカーの間だけ**を書き換えます。抽出には **universal-ctags** (`ctags-universal`) を使い、C のパーサは自作していません。
@@ -319,6 +327,9 @@ code --install-extension llvm-vs-code-extensions.vscode-clangd
 - **手書きの宣言と重複させません** (`c42check.proto.skipExisting`、既定 ON): マーカーの**外**で、すでに宣言されている関数 (ヘッダにある宣言を、これも ctags で取得します) は、ブロックに入れません。
   ブロックの中にある古い宣言は、この判定には使いません (定義が無くなった宣言は、ブロックから消えます)。OFF にすると、手書きの宣言があっても全てブロックに入れます。
   関数名の桁は、手書きの宣言の桁に揃えます (norm はヘッダ全体で桁を揃える規則 `MISALIGNED_FUNC_DECL` のため)。手書きの桁より、ブロックに必要な桁 (`unsigned long long` など) が広いときは、手書きの側は変えられないので、norminette が指摘します。
+- **手書きの宣言を、ソースの型に合わせます** (`c42check.proto.updateExisting`、既定 ON): マーカーの外の手書きの宣言が、ソースの定義と**型 (戻り値の型・引数の型)** で食い違うときは、ソースの型に書き換えます。
+  関数名の桁は元の宣言のまま、複数行の宣言は 1 行にまとめます。引数の**名前**だけの違いや、空白の違いは書き換えません。
+  コメント・インデント・`extern` / `static` / `inline` を含む宣言と、1 行に複数の宣言がある行は、触りません。書き換えた宣言は、ログ (Output「プロトタイプ同期」) に `前 → 後` で出ます。OFF にすると、手書きの宣言は書き換えません。
 - **マーカーが無いヘッダには、勝手に挿入しません。** 挿入位置 (最後の `#endif` の直前、ガードが無ければ末尾) と差分を見せて、承認を取ります。マーカーが壊れている (片方だけ、重複、順序が逆) 場合はエラーです。
 - 42 Norm の形式で出力します: 戻り値の型の後ろはタブ、ポインタは関数名側に寄せ (`char\t*ft_strdup(const char *s);`)、関数名の桁を揃え、**ファイル名のコメントや空行は入れず、関数名の順 (文字コード順) に詰めて並べます**。引数なしは `(void)` にします。マーカーの 2 行はそのまま残ります。
 - **書き込み後に `norminette` でヘッダを検査**します。指摘があれば Problems に出し、「元に戻す」を選べます。
@@ -387,6 +398,7 @@ code --install-extension llvm-vs-code-extensions.vscode-clangd
 | `c42check.proto.syncOnRun` | `false` | 実行時 (段階 0) にプロトタイプを同期 (プレビューなし) |
 | `c42check.proto.syncOnSave` | `false` | `.c` の保存時にプロトタイプを同期 (プレビューなし) |
 | `c42check.proto.skipExisting` | `true` | マーカーの外で手書きの宣言がある関数は、ブロックに入れない |
+| `c42check.proto.updateExisting` | `true` | マーカーの外の手書きの宣言が、ソースと型 (戻り値・引数) で食い違うときは、ソースの型に書き換える |
 | `c42check.debug.cwd` / `.terminal` | `${workspaceFolder}` / `integrated` | launch 構成に反映 |
 | `c42check.checks` | (全項目。TSan / MSan / CBMC / Frama-C のみ `false`) | チェックボックスの状態 (View から変更すると保存される) |
 
@@ -417,7 +429,7 @@ Node.js 22 以上が必要です (`.nvmrc`、`package.json` の `engines`)。
 npm ci
 npm run typecheck   # tsc --noEmit
 npm run build       # esbuild で dist/extension.js に bundle
-npm test            # 236 件。実際のツール (norminette / clang / valgrind など) があれば使い、無ければ該当項目は skip
+npm test            # 247 件。実際のツール (norminette / clang / valgrind など) があれば使い、無ければ該当項目は skip
 npm run package     # .vsix を作る
 ```
 
